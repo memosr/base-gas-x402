@@ -100,6 +100,7 @@ const LANDING_PAGE_HTML = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="talentapp:project_verification" content="c305bf15e9cb197df5136336c90c58273e8bb0e372e5c4a821d40e2a96ed2d7f843902f75c5ffcc0c4b3243fe26cab9d77ebe957d5487389e09e6c8804356292">
+<meta name="base:app_id" content="6a39a0374c49dc5fd7753e72" />
 <title>base-gas-x402</title>
 <style>
   :root {
