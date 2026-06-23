@@ -5,6 +5,10 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import {
+  BUILDER_CODE,
+  declareBuilderCodeExtension,
+} from "@x402/extensions/builder-code";
 
 import { getGasData } from "./gas.js";
 
@@ -19,6 +23,11 @@ const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET;
 const PAYMENT_NETWORK = "eip155:8453";
 const GAS_PRICE = "$0.001";
 const FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+// Base Builder Code attribution (ERC-8021 Schema 2 "a" / app code). Advertised
+// in the /gas 402 PAYMENT-REQUIRED extensions so settlement calldata can be
+// attributed to this service. Override via BUILDER_CODE env if needed.
+const BUILDER_CODE_VALUE = process.env.BUILDER_CODE || "bc_lhfd8zad";
 
 if (!PAY_TO_ADDRESS) {
   // Fail fast: without a payTo address the facilitator can't settle payments.
@@ -84,10 +93,14 @@ const routes = {
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: ["gas", "base", "fees", "infrastructure"],
-    extensions: declareDiscoveryExtension({
-      method: "GET",
-      output: { example: GAS_OUTPUT_EXAMPLE },
-    }),
+    // Bazaar discovery extension (preserved) + Base Builder Code attribution.
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        output: { example: GAS_OUTPUT_EXAMPLE },
+      }),
+      [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
+    },
   },
 };
 

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { wrapFetchWithPayment, x402Client, decodePaymentResponseHeader } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { BuilderCodeClientExtension } from "@x402/extensions/builder-code";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
@@ -15,6 +16,11 @@ const PAYMENT_NETWORK = "eip155:8453"; // Base mainnet
 // The private key signs the EIP-712 payment authorization. It is read from
 // the environment only and is NEVER logged, printed, or otherwise exposed.
 const BUYER_PRIVATE_KEY = process.env.BUYER_PRIVATE_KEY;
+
+// Base Builder Code attached to the payment payload for attribution. Registering
+// the builder-code client extension also lets x402 echo the server's app code
+// back in the payload, so the facilitator's app-code match check passes.
+const BUILDER_CODE_VALUE = process.env.BUILDER_CODE || "bc_lhfd8zad";
 
 /**
  * Normalizes a hex private key to the 0x-prefixed form viem expects.
@@ -93,6 +99,9 @@ async function main() {
     PAYMENT_NETWORK,
     new ExactEvmScheme(account),
   );
+  // Attach builder-code attribution to the payment payload (same code the
+  // server advertises). Leaves the existing payment flow otherwise untouched.
+  client.registerExtension(new BuilderCodeClientExtension(BUILDER_CODE_VALUE));
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
   console.log("[2/2] GET with x402 payment ($0.001 USDC on Base mainnet)...");
