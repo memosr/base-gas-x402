@@ -244,6 +244,94 @@ app.get("/", (_req, res) => {
   res.type("html").send(LANDING_PAGE_HTML);
 });
 
+// --- OpenAPI 3.1 discovery document --------------------------------------
+// Served free at GET /openapi.json so agents and directories (e.g. x402scan)
+// can machine-read what this service offers and how it's priced. This mirrors
+// the runtime 402 contract (Base mainnet eip155:8453, $0.001 USDC via x402)
+// but is purely descriptive — it does not affect the paywall below.
+const OPENAPI_DOCUMENT = {
+  openapi: "3.1.0",
+  info: {
+    title: "base-gas-x402",
+    version: "1.0.0",
+    description:
+      "Pay-per-call API serving live Base mainnet gas data, gated with the x402 payment protocol.",
+    "x-guidance":
+      "GET /gas ile canlı Base mainnet gas verisi al; çağrı başına 0.001 USDC x402 ile ödenir.",
+    contact: { email: "mehmet.sr35@gmail.com" },
+  },
+  servers: [{ url: "https://base-gas-x402-production.up.railway.app" }],
+  paths: {
+    "/gas": {
+      get: {
+        summary: "Live Base mainnet gas data (paid via x402)",
+        description:
+          "Returns live Base mainnet gas data (base fee, low/medium/high priority tiers, and an ETH transfer cost estimate) read directly from the chain. Each call costs 0.001 USDC settled on Base mainnet (eip155:8453) via x402.",
+        operationId: "getGas",
+        "x-payment-info": {
+          price: { mode: "fixed", currency: "USD", amount: "0.001000" },
+          protocols: [{ x402: {} }],
+        },
+        responses: {
+          200: {
+            description: "Live Base mainnet gas data (payment accepted).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    chain: { type: "string", example: "base-mainnet" },
+                    chainId: { type: "integer", example: 8453 },
+                    blockNumber: { type: "string", example: "12345678" },
+                    baseFeePerGas: {
+                      type: "string",
+                      description: "Base fee per gas, in gwei.",
+                      example: "0.012",
+                    },
+                    priorityFeePerGas: {
+                      type: "object",
+                      description: "Priority fee tiers, in gwei.",
+                      properties: {
+                        low: { type: "string", example: "0.001" },
+                        medium: { type: "string", example: "0.002" },
+                        high: { type: "string", example: "0.004" },
+                      },
+                    },
+                    gasPrice: {
+                      type: "string",
+                      description: "Network gas price, in gwei.",
+                      example: "0.014",
+                    },
+                    estimatedTransferCost: {
+                      type: "object",
+                      description: "Estimated cost of a plain ETH transfer.",
+                      properties: {
+                        gasLimit: { type: "integer", example: 21000 },
+                        gwei: { type: "string", example: "294" },
+                        eth: { type: "string", example: "0.000000294" },
+                      },
+                    },
+                    fetchedAt: {
+                      type: "string",
+                      format: "date-time",
+                      example: "2026-06-22T00:00:00.000Z",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          402: { description: "Payment Required" },
+        },
+      },
+    },
+  },
+};
+
+app.get("/openapi.json", (_req, res) => {
+  res.json(OPENAPI_DOCUMENT);
+});
+
 // JSON service description for programmatic clients (was previously at GET /).
 app.get("/info", (_req, res) => {
   res.json({
