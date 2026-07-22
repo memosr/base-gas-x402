@@ -58,10 +58,41 @@ const facilitator = new HTTPFacilitatorClient(
 
 // The resource server registers the EVM "exact" scheme for Base mainnet, and
 // paymentMiddleware gates the matching routes below.
-const resourceServer = new x402ResourceServer(facilitator).register(
-  PAYMENT_NETWORK,
-  new ExactEvmScheme(),
-);
+const resourceServer = new x402ResourceServer(facilitator)
+  .register(PAYMENT_NETWORK, new ExactEvmScheme())
+  // --- Settlement diagnostics (logging ONLY — payment logic is unchanged) ---
+  // The CDP facilitator can reject a /settle two different ways, and by default
+  // the client only ever sees an opaque 402. These two hooks surface the real
+  // reason in the server log:
+  //   (a) non-2xx from CDP  -> SDK throws SettleError -> onSettleFailure fires,
+  //       with error.errorReason / errorMessage / statusCode populated.
+  //   (b) 200 { success:false, errorReason } -> returned normally,
+  //       so onAfterSettle sees result.success === false.
+  // Returning nothing from onSettleFailure means "do not recover", so the
+  // original 402 response to the client is preserved exactly.
+  .onSettleFailure(async ({ error, paymentPayload, requirements }) => {
+    const e = /** @type {any} */ (error);
+    console.error("[x402 settle FAILED]", {
+      errorReason: e?.errorReason,
+      errorMessage: e?.errorMessage ?? e?.message,
+      statusCode: e?.statusCode,
+      payer: e?.payer ?? paymentPayload?.payload?.authorization?.from,
+      transaction: e?.transaction,
+      network: e?.network ?? requirements?.network,
+      name: e?.name,
+    });
+  })
+  .onAfterSettle(async ({ result }) => {
+    if (result && result.success === false) {
+      console.error("[x402 settle REJECTED]", {
+        errorReason: result.errorReason,
+        errorMessage: result.errorMessage,
+        payer: result.payer,
+        transaction: result.transaction,
+        network: result.network,
+      });
+    }
+  });
 
 // Output shape advertised to Bazaar crawlers so agents know what they'll get.
 const GAS_OUTPUT_EXAMPLE = {
