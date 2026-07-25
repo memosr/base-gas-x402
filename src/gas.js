@@ -17,6 +17,22 @@ const FEE_HISTORY_BLOCKS = 10;
 
 const rpcUrl = process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org";
 
+/**
+ * The RPC URL often carries a provider API key in its path or query string
+ * (Alchemy, QuickNode, Infura all do this). Never return it verbatim: every
+ * paying caller would be able to read and reuse the key. Expose only the host,
+ * which is enough for callers to know where the data came from.
+ */
+function rpcSource(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "unknown";
+  }
+}
+
+const RPC_SOURCE = rpcSource(rpcUrl);
+
 const client = createPublicClient({
   chain: base,
   transport: http(rpcUrl),
@@ -70,7 +86,7 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
   return {
     chain: "base-mainnet",
     chainId: base.id,
-    rpcUrl,
+    rpcSource: RPC_SOURCE,
     blockNumber: block.number?.toString() ?? null,
     units: { fees: "gwei", cost: "gwei + ETH" },
     baseFeePerGas: formatGwei(baseFeePerGas),
