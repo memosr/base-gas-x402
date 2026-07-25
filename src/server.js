@@ -30,8 +30,23 @@ const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET;
 // Coinbase CDP production facilitator. The gas data itself also comes from
 // Base mainnet (see gas.js).
 const PAYMENT_NETWORK = "eip155:8453";
-const GAS_PRICE = "$0.001";
 const FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+// Price per /gas call, in USD. Overridable via GAS_PRICE_USD so pricing can be
+// tuned from the host env without a code change. Comparable Base gas endpoints
+// on x402 sit between $0.01 and $0.10, so $0.005 still undercuts the market.
+const GAS_PRICE_USD = process.env.GAS_PRICE_USD || "0.005";
+
+if (!/^\d+(\.\d+)?$/.test(GAS_PRICE_USD) || Number(GAS_PRICE_USD) <= 0) {
+  throw new Error(
+    `GAS_PRICE_USD must be a positive decimal number, got "${GAS_PRICE_USD}"`,
+  );
+}
+
+// Display form ("$0.005") for the x402 accepts block and the landing page.
+const GAS_PRICE = `$${GAS_PRICE_USD}`;
+// OpenAPI x-payment-info wants decimal USD with fixed precision.
+const GAS_PRICE_AMOUNT = Number(GAS_PRICE_USD).toFixed(6);
 
 // Base Builder Code attribution (ERC-8021 Schema 2 "a" / app code). Advertised
 // in the /gas 402 PAYMENT-REQUIRED extensions so settlement calldata can be
@@ -304,7 +319,7 @@ app.get(["/favicon.svg", "/favicon.ico"], (_req, res) => {
 // --- OpenAPI 3.1 discovery document --------------------------------------
 // Served free at GET /openapi.json so agents and directories (e.g. x402scan)
 // can machine-read what this service offers and how it's priced. This mirrors
-// the runtime 402 contract (Base mainnet eip155:8453, $0.001 USDC via x402)
+// the runtime 402 contract (Base mainnet eip155:8453, USDC via x402)
 // but is purely descriptive — it does not affect the paywall below.
 const OPENAPI_DOCUMENT = {
   openapi: "3.1.0",
@@ -312,9 +327,9 @@ const OPENAPI_DOCUMENT = {
     title: "base-gas-x402",
     version: "1.0.0",
     description:
-      "Pay-per-call gas oracle for Base mainnet (Base L2, Coinbase Base, chain id 8453), gated with the x402 payment protocol. Returns EIP-1559 base fee, low/medium/high priority fee tiers, current gas price in gwei, and an estimated ETH transfer cost, all read live from the chain. No API keys and no subscription: agents pay 0.001 USDC per call over x402.",
+      `Pay-per-call gas oracle for Base mainnet (Base L2, Coinbase Base, chain id 8453), gated with the x402 payment protocol. Returns EIP-1559 base fee, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost, all read live from the chain. No API keys and no subscription: agents pay ${GAS_PRICE_USD} USDC per call over x402.`,
     "x-guidance":
-      "Call GET /gas to fetch live Base mainnet gas data. No parameters are needed. Each call costs 0.001 USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost, budget agent gas spending, monitor Base L2 network congestion, or compare Base fees against other chains. Fees are returned in gwei; estimatedTransferCost assumes a 21000 gas ETH transfer priced at base fee plus the medium priority tier.",
+      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost, budget agent gas spending, monitor Base L2 network congestion, or compare Base fees against other chains. Fees are returned in gwei. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
     contact: { email: "mehmet.sr35@gmail.com" },
   },
   servers: [{ url: "https://base-gas-x402-production.up.railway.app" }],
@@ -324,7 +339,7 @@ const OPENAPI_DOCUMENT = {
         summary:
           "Live Base mainnet gas price: base fee, priority fee tiers, and transfer cost estimate (paid via x402)",
         description:
-          "Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated ETH transfer cost. Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs 0.001 USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.",
+          `Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost for any gas limit. Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, price a Uniswap swap or NFT mint on Base, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs ${GAS_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.`,
         operationId: "getGas",
         parameters: [
           {
@@ -343,7 +358,7 @@ const OPENAPI_DOCUMENT = {
           },
         ],
         "x-payment-info": {
-          price: { mode: "fixed", currency: "USD", amount: "0.001000" },
+          price: { mode: "fixed", currency: "USD", amount: GAS_PRICE_AMOUNT },
           protocols: [{ x402: {} }],
         },
         responses: {
