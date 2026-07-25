@@ -11,6 +11,7 @@ import {
 } from "@x402/extensions/builder-code";
 
 import { getGasData, MIN_GAS_LIMIT, MAX_GAS_LIMIT } from "./gas.js";
+import { getGasComparison } from "./compare.js";
 
 // Common gas limits, surfaced in the discovery docs so agents know what to pass.
 const GAS_LIMIT_PRESETS = {
@@ -43,10 +44,21 @@ if (!/^\d+(\.\d+)?$/.test(GAS_PRICE_USD) || Number(GAS_PRICE_USD) <= 0) {
   );
 }
 
+// Price per /gas/compare call. Higher than /gas because it reads four chains.
+const COMPARE_PRICE_USD = process.env.COMPARE_PRICE_USD || "0.01";
+
+if (!/^\d+(\.\d+)?$/.test(COMPARE_PRICE_USD) || Number(COMPARE_PRICE_USD) <= 0) {
+  throw new Error(
+    `COMPARE_PRICE_USD must be a positive decimal number, got "${COMPARE_PRICE_USD}"`,
+  );
+}
+
 // Display form ("$0.005") for the x402 accepts block and the landing page.
 const GAS_PRICE = `$${GAS_PRICE_USD}`;
+const COMPARE_PRICE = `$${COMPARE_PRICE_USD}`;
 // OpenAPI x-payment-info wants decimal USD with fixed precision.
 const GAS_PRICE_AMOUNT = Number(GAS_PRICE_USD).toFixed(6);
+const COMPARE_PRICE_AMOUNT = Number(COMPARE_PRICE_USD).toFixed(6);
 
 // Base Builder Code attribution (ERC-8021 Schema 2 "a" / app code). Advertised
 // in the /gas 402 PAYMENT-REQUIRED extensions so settlement calldata can be
@@ -97,6 +109,27 @@ const GAS_OUTPUT_EXAMPLE = {
   gasPrice: "0.014",
   estimatedTransferCost: { gasLimit: 21000, gwei: "294", eth: "0.000000294" },
   fetchedAt: "2026-06-22T00:00:00.000Z",
+};
+
+const COMPARE_OUTPUT_EXAMPLE = {
+  gasLimit: 21000,
+  basis: "current gas price x gasLimit",
+  chains: [
+    {
+      chain: "base",
+      label: "Base",
+      chainId: 8453,
+      blockNumber: "49106604",
+      baseFeePerGas: "0.005",
+      gasPrice: "0.006",
+      estimatedCost: { gasLimit: 21000, gwei: "126", eth: "0.000000126" },
+    },
+  ],
+  cheapest: "base",
+  baseRank: 1,
+  baseVsEthereum: "Base is 240.5x cheaper than Ethereum",
+  unavailable: [],
+  fetchedAt: "2026-07-25T18:02:36.639Z",
 };
 
 const routes = {
@@ -156,6 +189,56 @@ const routes = {
           required: [],
         },
         output: { example: GAS_OUTPUT_EXAMPLE },
+      }),
+      [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
+    },
+  },
+
+  "GET /gas/compare": {
+    accepts: {
+      scheme: "exact",
+      network: PAYMENT_NETWORK,
+      price: COMPARE_PRICE,
+      payTo: PAY_TO_ADDRESS,
+    },
+    description:
+      "Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's base fee, gas price, and estimated cost for a given gas limit, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Use it to pick the cheapest chain for a transaction, decide whether to bridge, compare L2 fees, or route agent transactions to the lowest-cost network.",
+    mimeType: "application/json",
+    serviceName: "base-gas-x402",
+    tags: [
+      "gas",
+      "gas comparison",
+      "compare chains",
+      "cross-chain",
+      "multi-chain",
+      "l2 fees",
+      "base",
+      "optimism",
+      "arbitrum",
+      "ethereum",
+      "cheapest chain",
+      "transaction cost",
+      "bridge decision",
+      "onchain-data",
+    ],
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        input: { gasLimit: 21000 },
+        inputSchema: {
+          properties: {
+            gasLimit: {
+              type: "integer",
+              minimum: Number(MIN_GAS_LIMIT),
+              maximum: Number(MAX_GAS_LIMIT),
+              default: 21000,
+              description:
+                "Gas units to price each chain against. Defaults to 21000 (a plain ETH transfer).",
+            },
+          },
+          required: [],
+        },
+        output: { example: COMPARE_OUTPUT_EXAMPLE },
       }),
       [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
     },
@@ -414,6 +497,111 @@ const OPENAPI_DOCUMENT = {
         },
       },
     },
+    "/gas/compare": {
+      get: {
+        summary:
+          "Compare live gas costs across Base, OP Mainnet, Arbitrum, and Ethereum (paid via x402)",
+        description:
+          `Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+        operationId: "compareGas",
+        parameters: [
+          {
+            name: "gasLimit",
+            in: "query",
+            required: false,
+            description:
+              "Gas units to price each chain against. Defaults to 21000 (a plain ETH transfer).",
+            schema: {
+              type: "integer",
+              minimum: Number(MIN_GAS_LIMIT),
+              maximum: Number(MAX_GAS_LIMIT),
+              default: 21000,
+              example: 180000,
+            },
+          },
+        ],
+        "x-payment-info": {
+          price: {
+            mode: "fixed",
+            currency: "USD",
+            amount: COMPARE_PRICE_AMOUNT,
+          },
+          protocols: [{ x402: {} }],
+        },
+        responses: {
+          200: {
+            description: "Multi-chain gas comparison (payment accepted).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    gasLimit: { type: "integer", example: 21000 },
+                    basis: {
+                      type: "string",
+                      example: "current gas price x gasLimit",
+                    },
+                    chains: {
+                      type: "array",
+                      description: "Per-chain gas data, cheapest first.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          chain: { type: "string", example: "base" },
+                          label: { type: "string", example: "Base" },
+                          chainId: { type: "integer", example: 8453 },
+                          blockNumber: { type: "string", example: "49106604" },
+                          baseFeePerGas: { type: "string", example: "0.005" },
+                          gasPrice: { type: "string", example: "0.006" },
+                          estimatedCost: {
+                            type: "object",
+                            properties: {
+                              gasLimit: { type: "integer", example: 21000 },
+                              gwei: { type: "string", example: "126" },
+                              eth: {
+                                type: "string",
+                                example: "0.000000126",
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                    cheapest: {
+                      type: "string",
+                      description: "Key of the cheapest chain.",
+                      example: "base",
+                    },
+                    baseRank: {
+                      type: "integer",
+                      description: "Base's position in the ranking, 1 = cheapest.",
+                      example: 1,
+                    },
+                    baseVsEthereum: {
+                      type: "string",
+                      example: "Base is 240.5x cheaper than Ethereum",
+                    },
+                    unavailable: {
+                      type: "array",
+                      description: "Chains whose RPC did not respond.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          chain: { type: "string" },
+                          reason: { type: "string" },
+                        },
+                      },
+                    },
+                    fetchedAt: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          402: { description: "Payment Required" },
+        },
+      },
+    },
   },
 };
 
@@ -431,12 +619,16 @@ app.get("/info", (_req, res) => {
       "GET /": "HTML landing page (free).",
       "GET /info": "This service description as JSON (free).",
       "GET /gas": `Live Base mainnet gas data. Costs ${GAS_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
+      "GET /gas/compare": `Live gas comparison across Base, OP Mainnet, Arbitrum One, and Ethereum. Costs ${COMPARE_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
     },
     payment: {
       protocol: "x402",
-      price: GAS_PRICE,
       network: PAYMENT_NETWORK,
       facilitator: FACILITATOR_URL,
+      prices: {
+        "GET /gas": GAS_PRICE,
+        "GET /gas/compare": COMPARE_PRICE,
+      },
     },
   });
 });
@@ -452,27 +644,39 @@ app.use(paymentMiddleware(routes, resourceServer));
 // gasLimit is validated HERE, inside the handler, not in middleware. The
 // paywall runs first, so unauthenticated probes still reach a clean 402 instead
 // of a 400 (see the "Expected 402, got 400" discovery failure mode).
-app.get("/gas", async (req, res) => {
-  const raw = req.query.gasLimit;
+/**
+ * Parses the shared optional `gasLimit` query parameter.
+ * Returns `{ gasLimit }` on success or `{ error }` describing what was wrong.
+ * `gasLimit` is undefined when the caller omitted it, letting each data module
+ * apply its own default.
+ */
+function parseGasLimit(raw) {
+  if (raw === undefined) return { gasLimit: undefined };
 
-  let gasLimit;
-  if (raw !== undefined) {
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed)) {
-      return res.status(400).json({
-        error: "gasLimit must be an integer",
-        received: raw,
-      });
-    }
-    gasLimit = BigInt(parsed);
-    if (gasLimit < MIN_GAS_LIMIT || gasLimit > MAX_GAS_LIMIT) {
-      return res.status(400).json({
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed)) {
+    return {
+      error: { error: "gasLimit must be an integer", received: raw },
+    };
+  }
+
+  const gasLimit = BigInt(parsed);
+  if (gasLimit < MIN_GAS_LIMIT || gasLimit > MAX_GAS_LIMIT) {
+    return {
+      error: {
         error: `gasLimit must be between ${MIN_GAS_LIMIT} and ${MAX_GAS_LIMIT}`,
         received: parsed,
         presets: GAS_LIMIT_PRESETS,
-      });
-    }
+      },
+    };
   }
+
+  return { gasLimit };
+}
+
+app.get("/gas", async (req, res) => {
+  const { gasLimit, error: invalid } = parseGasLimit(req.query.gasLimit);
+  if (invalid) return res.status(400).json(invalid);
 
   try {
     const data = await getGasData(gasLimit);
@@ -486,8 +690,35 @@ app.get("/gas", async (req, res) => {
   }
 });
 
+app.get("/gas/compare", async (req, res) => {
+  const { gasLimit, error: invalid } = parseGasLimit(req.query.gasLimit);
+  if (invalid) return res.status(400).json(invalid);
+
+  try {
+    const data = await getGasComparison(gasLimit);
+
+    // Every chain failing means the comparison is meaningless, so surface it as
+    // an upstream error instead of returning an empty ranking to a paying caller.
+    if (data.chains.length === 0) {
+      return res.status(502).json({
+        error: "No chain RPC responded",
+        unavailable: data.unavailable,
+      });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("[/gas/compare] failed to compare gas:", error);
+    res.status(502).json({
+      error: "Failed to compare gas across chains",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`base-gas-x402 listening on http://localhost:${PORT}`);
   console.log(`  free:  GET /`);
-  console.log(`  paid:  GET /gas  (${GAS_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas          (${GAS_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas/compare  (${COMPARE_PRICE} via x402, ${PAYMENT_NETWORK})`);
 });
