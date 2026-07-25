@@ -10,7 +10,16 @@ import {
   declareBuilderCodeExtension,
 } from "@x402/extensions/builder-code";
 
-import { getGasData } from "./gas.js";
+import { getGasData, MIN_GAS_LIMIT, MAX_GAS_LIMIT } from "./gas.js";
+
+// Common gas limits, surfaced in the discovery docs so agents know what to pass.
+const GAS_LIMIT_PRESETS = {
+  "ETH transfer": 21000,
+  "ERC-20 transfer": 65000,
+  "NFT mint": 85000,
+  "Uniswap swap": 180000,
+  "contract deploy": 1500000,
+};
 
 const PORT = process.env.PORT || 4021;
 const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS;
@@ -114,6 +123,23 @@ const routes = {
     extensions: {
       ...declareDiscoveryExtension({
         method: "GET",
+        // Optional query input. Declaring it is what clears the
+        // L3_INPUT_SCHEMA_MISSING discovery warning and lets agents invoke the
+        // route reliably instead of guessing.
+        input: { gasLimit: 21000 },
+        inputSchema: {
+          properties: {
+            gasLimit: {
+              type: "integer",
+              minimum: Number(MIN_GAS_LIMIT),
+              maximum: Number(MAX_GAS_LIMIT),
+              default: 21000,
+              description:
+                "Gas units to price the cost estimate against. Defaults to 21000 (a plain ETH transfer). Use ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, or ~1500000 for a contract deploy.",
+            },
+          },
+          required: [],
+        },
         output: { example: GAS_OUTPUT_EXAMPLE },
       }),
       [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
@@ -261,6 +287,20 @@ app.get("/", (_req, res) => {
   res.type("html").send(LANDING_PAGE_HTML);
 });
 
+// --- Favicon ------------------------------------------------------------
+// Directories and agent clients render an origin's favicon next to its listing.
+// Serving one clears the FAVICON_MISSING discovery warning.
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0b0e14"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#5b8cff" stroke-width="4"/>
+  <path d="M32 20 L32 32 L41 38" fill="none" stroke="#5b8cff" stroke-width="4" stroke-linecap="round"/>
+</svg>`;
+
+app.get(["/favicon.svg", "/favicon.ico"], (_req, res) => {
+  res.type("image/svg+xml").set("Cache-Control", "public, max-age=86400");
+  res.send(FAVICON_SVG);
+});
+
 // --- OpenAPI 3.1 discovery document --------------------------------------
 // Served free at GET /openapi.json so agents and directories (e.g. x402scan)
 // can machine-read what this service offers and how it's priced. This mirrors
@@ -286,6 +326,22 @@ const OPENAPI_DOCUMENT = {
         description:
           "Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated ETH transfer cost. Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs 0.001 USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.",
         operationId: "getGas",
+        parameters: [
+          {
+            name: "gasLimit",
+            in: "query",
+            required: false,
+            description:
+              "Gas units to price the cost estimate against. Defaults to 21000 (a plain ETH transfer). Use ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, or ~1500000 for a contract deploy.",
+            schema: {
+              type: "integer",
+              minimum: Number(MIN_GAS_LIMIT),
+              maximum: Number(MAX_GAS_LIMIT),
+              default: 21000,
+              example: 180000,
+            },
+          },
+        ],
         "x-payment-info": {
           price: { mode: "fixed", currency: "USD", amount: "0.001000" },
           protocols: [{ x402: {} }],
@@ -378,9 +434,33 @@ app.get("/info", (_req, res) => {
 app.use(paymentMiddleware(routes, resourceServer));
 
 // --- Paid route ---------------------------------------------------------
-app.get("/gas", async (_req, res) => {
+// gasLimit is validated HERE, inside the handler, not in middleware. The
+// paywall runs first, so unauthenticated probes still reach a clean 402 instead
+// of a 400 (see the "Expected 402, got 400" discovery failure mode).
+app.get("/gas", async (req, res) => {
+  const raw = req.query.gasLimit;
+
+  let gasLimit;
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed)) {
+      return res.status(400).json({
+        error: "gasLimit must be an integer",
+        received: raw,
+      });
+    }
+    gasLimit = BigInt(parsed);
+    if (gasLimit < MIN_GAS_LIMIT || gasLimit > MAX_GAS_LIMIT) {
+      return res.status(400).json({
+        error: `gasLimit must be between ${MIN_GAS_LIMIT} and ${MAX_GAS_LIMIT}`,
+        received: parsed,
+        presets: GAS_LIMIT_PRESETS,
+      });
+    }
+  }
+
   try {
-    const data = await getGasData();
+    const data = await getGasData(gasLimit);
     res.json(data);
   } catch (error) {
     console.error("[/gas] failed to fetch gas data:", error);

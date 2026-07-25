@@ -1,8 +1,14 @@
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base } from "viem/chains";
 
-// A plain ETH transfer always costs exactly this much gas.
+// A plain ETH transfer always costs exactly this much gas. Used as the default
+// when the caller does not pass an explicit gasLimit.
 const TRANSFER_GAS_LIMIT = 21000n;
+
+// Bounds for a caller-supplied gasLimit: a plain transfer is the floor, and the
+// Base block gas limit is a sane ceiling.
+export const MIN_GAS_LIMIT = 21000n;
+export const MAX_GAS_LIMIT = 30000000n;
 
 // Percentiles used to derive low / medium / high priority fee tiers
 // from the network's recent fee history.
@@ -35,8 +41,12 @@ function averageRewardColumn(reward, columnIndex) {
 /**
  * Fetches live Base mainnet gas data.
  * All values are read from the chain — nothing is fabricated.
+ *
+ * @param {bigint} [gasLimit] Gas units to price the cost estimate against.
+ *   Defaults to 21000 (a plain ETH transfer). Pass a larger value to estimate
+ *   swaps, ERC-20 transfers, NFT mints, or contract deployments.
  */
-export async function getGasData() {
+export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
   const [block, feeHistory, gasPrice] = await Promise.all([
     client.getBlock({ blockTag: "latest" }),
     client.getFeeHistory({
@@ -55,7 +65,7 @@ export async function getGasData() {
 
   // Effective price an EIP-1559 transfer would pay at the "medium" tier.
   const effectiveGasPrice = baseFeePerGas + mediumPriority;
-  const transferCostWei = effectiveGasPrice * TRANSFER_GAS_LIMIT;
+  const transferCostWei = effectiveGasPrice * gasLimit;
 
   return {
     chain: "base-mainnet",
@@ -71,7 +81,7 @@ export async function getGasData() {
     },
     gasPrice: formatGwei(gasPrice),
     estimatedTransferCost: {
-      gasLimit: Number(TRANSFER_GAS_LIMIT),
+      gasLimit: Number(gasLimit),
       basis: "baseFee + medium priority fee",
       gwei: formatGwei(transferCostWei),
       eth: formatEther(transferCostWei),
