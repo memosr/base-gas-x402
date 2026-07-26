@@ -937,6 +937,10 @@ const OPENAPI_DOCUMENT = {
         description:
           "Free health check. Reports service uptime and, more usefully, exactly how much gas history has been collected so far: sample count, hours covered, sampling interval, and retention. Call this before paying for /gas/history or /gas/cheapest-window to confirm the coverage is deep enough for your use case. No payment required.",
         operationId: "getHealth",
+        // An empty security array is how OpenAPI declares an operation as
+        // explicitly public. Without it, discovery cannot tell "free" apart
+        // from "auth mode forgotten" and warns on both L2 and L3.
+        security: [],
         responses: {
           200: {
             description: "Service status and history coverage.",
