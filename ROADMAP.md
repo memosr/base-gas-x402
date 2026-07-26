@@ -7,6 +7,36 @@
 
 ---
 
+## İlerleme (26 Temmuz 2026 güncellemesi)
+
+| Faz | Durum | Not |
+|---|---|---|
+| Faz 0 | Kısmen | `/health` ölçüm veriyor; istek sayacı henüz yok |
+| Faz 1 | **Bitti** | Kod ve deploy tamam, discovery uyarıları temiz. Etkisi henüz ölçülemedi, AgentCash anlamsal indeksi 12+ saattir yenilenmedi |
+| Faz 2 | **Bitti** | $0.001 → $0.005, fiyatlar env değişkenlerine taşındı |
+| Faz 3 | **Bitti** | 1 → 5 endpoint |
+| Faz 4 | Sırada | Dağıtım |
+| Faz 5 | Kısmen | RPC yedekleme yapıldı; cache ve uptime izleme kaldı |
+
+**Yayındaki endpoint'ler**
+
+| Endpoint | Fiyat |
+|---|---|
+| `GET /gas` | $0.005 |
+| `GET /gas/compare` | $0.01 |
+| `GET /gas/history` | $0.01 |
+| `GET /gas/cheapest-window` | $0.02 |
+| `GET /health` | ücretsiz |
+
+**Yol boyunca çıkan ek bulgular**
+
+- Alchemy API anahtarı `/gas` yanıtında sızıyordu, kapatıldı. Anahtarın rotate edilmesi gerekiyor.
+- Doğrulayıcı 40'tan fazla endpoint'i uyarı sebebi sayıyor (`ROUTE_COUNT_HIGH = 40`). Rakiplerin 67 ve 353 endpoint'i bu eşiğin üstünde. Endpoint yığmak avantaj değil.
+- Ethereum'un ücretsiz public RPC'leri veri merkezi IP'lerini engelliyor. Zincir başına yedekli RPC listesi eklendi.
+- Geçmiş veri bellekte tutuluyor, **her deploy sıfırlıyor**. Veri birikmesi için deploy'ların seyrekleşmesi gerekiyor.
+
+---
+
 ## Teşhis
 
 Sorun teknik değil. Kod temiz, x402 akışı doğru, OpenAPI ve Bazaar discovery kurulu, CDP production facilitator bağlı. AgentCash indeksinde kayıtlısın:

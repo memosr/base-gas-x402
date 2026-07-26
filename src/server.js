@@ -111,6 +111,18 @@ if (!CDP_API_KEY_ID || !CDP_API_KEY_SECRET) {
 }
 
 const app = express();
+
+// Railway (like most PaaS edges) terminates TLS and forwards the request to
+// this process over plain HTTP. Without this, req.protocol is "http", so the
+// x402 middleware advertises the resource as http://... in the 402 challenge.
+// The Bazaar discovery registrar rejects that outright:
+//   "discovery request validation failed: resource must start with 'https://'
+//    when protocol type is http"
+// which silently blocks the hourly discovery registration and leaves the
+// service stale in x402scan and every index downstream of it.
+// Trusting the proxy makes Express read X-Forwarded-Proto, so req.protocol
+// becomes "https" and the advertised resource URL matches reality.
+app.set("trust proxy", true);
 app.use(express.json());
 
 // --- x402 wiring --------------------------------------------------------
