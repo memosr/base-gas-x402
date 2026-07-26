@@ -1035,6 +1035,47 @@ app.get("/info", (_req, res) => {
 // valid payment — including the empty requests a Bazaar crawler sends — gets
 // a 402 with the payment requirements and discovery metadata, and no gas
 // data is fetched.
+// --- 402 diagnostics -----------------------------------------------------
+// When the x402 middleware rejects a payment it answers with an empty JSON body
+// and puts the reason in the response headers, which never reaches the operator.
+// This logs the decoded reason for any 402 that carries a payment header, so a
+// rejected payment is debuggable from the deploy logs instead of invisible.
+app.use((req, res, next) => {
+  const hadPaymentHeader = Boolean(
+    req.get("x-payment") || req.get("payment-signature"),
+  );
+
+  res.on("finish", () => {
+    if (res.statusCode !== 402 || !hadPaymentHeader) return;
+
+    const header = res.getHeader("payment-required");
+    let reason = "(no payment-required header on the response)";
+
+    if (header) {
+      try {
+        const decoded = JSON.parse(
+          Buffer.from(String(header), "base64").toString("utf8"),
+        );
+        reason = JSON.stringify({
+          error: decoded.error,
+          errorMessage: decoded.errorMessage,
+          resource: decoded.resource?.url,
+        });
+      } catch (error) {
+        reason = `(could not decode: ${error.message})`;
+      }
+    }
+
+    console.error(`[402] paid request rejected on ${req.method} ${req.path}: ${reason}`);
+
+    // Log every response header name too: the reason may travel in a header we
+    // are not expecting rather than in payment-required.
+    console.error(`[402] response headers: ${Object.keys(res.getHeaders()).join(", ")}`);
+  });
+
+  next();
+});
+
 app.use(paymentMiddleware(routes, resourceServer));
 
 // --- Paid route ---------------------------------------------------------
