@@ -175,17 +175,15 @@ const COMPARE_OUTPUT_EXAMPLE = {
   fetchedAt: "2026-07-25T18:02:36.639Z",
 };
 
+// Kept deliberately small: this example is embedded in the 402 challenge and
+// echoed back inside the payment payload, which the facilitator size-limits.
 const HISTORY_OUTPUT_EXAMPLE = {
-  chain: "base-mainnet",
-  chainId: 8453,
   requestedHours: 24,
   units: "gwei",
   currentGasPrice: 0.006,
   verdict: "cheap",
   summary: { min: 0.005, max: 0.031, avg: 0.009, median: 0.007 },
-  samples: [{ t: "2026-07-26T06:00:00.000Z", baseFee: 0.005, gasPrice: 0.006, priorityMedium: 0.001 }],
-  coverage: { samples: 288, hoursCovered: 24, retentionHours: 168 },
-  fetchedAt: "2026-07-26T06:08:54.972Z",
+  samples: [{ t: "2026-07-26T06:00:00.000Z", gasPrice: 0.006 }],
 };
 
 const WINDOW_OUTPUT_EXAMPLE = {
@@ -324,23 +322,17 @@ const routes = {
       price: HISTORY_PRICE,
       payTo: PAY_TO_ADDRESS,
     },
+    // NOTE: this bazaar description is echoed verbatim into the x402 payment
+    // payload, and the CDP facilitator rejects payloads past a size threshold
+    // ("'paymentPayload' is invalid"). Measured: a 4260-byte payload is
+    // rejected, 4188 is accepted. Keep this short. The long, keyword-rich copy
+    // that actually drives discovery lives in the OpenAPI document, which is
+    // not part of the payment payload.
     description:
-      "Historical Base mainnet gas prices over a lookback window, sampled continuously from the chain. Returns the time series plus min, max, average, and median gas price for the window, and a verdict on whether gas is currently cheap, normal, or expensive relative to that window. A live RPC call tells you the current price but not whether it is high or low; this does. Use it to decide whether to transact now or wait, detect congestion spikes, chart Base gas trends, or set gas budgets from real observed data.",
+      "Historical Base mainnet gas prices over a lookback window: time series, min/max/average/median, and a cheap/normal/expensive verdict for the current price.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
-    tags: [
-      "gas history",
-      "historical gas",
-      "gas trend",
-      "gas chart",
-      "time series",
-      "base",
-      "base-l2",
-      "gas price",
-      "congestion",
-      "should i transact now",
-      "onchain-data",
-    ],
+    tags: ["gas history", "gas trend", "base", "base-l2", "onchain-data"],
     extensions: {
       ...declareDiscoveryExtension({
         method: "GET",
