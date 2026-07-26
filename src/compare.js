@@ -9,51 +9,90 @@ import { base, mainnet, optimism, arbitrum } from "viem/chains";
  * answer that, which is why this is a separate resource.
  */
 
-// Public RPCs are used as defaults so the service works with zero extra config.
-// Each is overridable so operators can point at their own provider.
+/**
+ * Each chain carries a list of RPC endpoints tried in order. Free public RPCs
+ * rate-limit and go down without warning (llamarpc dropped Ethereum requests in
+ * testing), so a single URL is not enough to keep a paid endpoint honest.
+ * An operator-supplied env URL always takes priority.
+ */
+function rpcList(envUrl, fallbacks) {
+  return envUrl ? [envUrl, ...fallbacks] : fallbacks;
+}
+
 const CHAINS = [
   {
     key: "base",
     label: "Base",
     chain: base,
-    rpcUrl: process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org",
+    rpcUrls: rpcList(process.env.BASE_MAINNET_RPC_URL, [
+      "https://mainnet.base.org",
+      "https://base-rpc.publicnode.com",
+    ]),
   },
   {
     key: "optimism",
     label: "OP Mainnet",
     chain: optimism,
-    rpcUrl: process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
+    rpcUrls: rpcList(process.env.OPTIMISM_RPC_URL, [
+      "https://mainnet.optimism.io",
+      "https://optimism-rpc.publicnode.com",
+    ]),
   },
   {
     key: "arbitrum",
     label: "Arbitrum One",
     chain: arbitrum,
-    rpcUrl: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
+    rpcUrls: rpcList(process.env.ARBITRUM_RPC_URL, [
+      "https://arb1.arbitrum.io/rpc",
+      "https://arbitrum-one-rpc.publicnode.com",
+    ]),
   },
   {
     key: "ethereum",
     label: "Ethereum",
     chain: mainnet,
-    rpcUrl: process.env.ETHEREUM_RPC_URL || "https://eth.llamarpc.com",
+    rpcUrls: rpcList(process.env.ETHEREUM_RPC_URL, [
+      "https://ethereum-rpc.publicnode.com",
+      "https://eth.drpc.org",
+      "https://eth.llamarpc.com",
+    ]),
   },
 ];
 
+// Clients are built once per RPC URL and reused across requests.
 const clients = new Map(
   CHAINS.map((entry) => [
     entry.key,
-    createPublicClient({ chain: entry.chain, transport: http(entry.rpcUrl) }),
+    entry.rpcUrls.map((url) =>
+      createPublicClient({ chain: entry.chain, transport: http(url) }),
+    ),
   ]),
 );
 
 const DEFAULT_GAS_LIMIT = 21000n;
 
 async function readChain(entry, gasLimit) {
-  const client = clients.get(entry.key);
+  const candidates = clients.get(entry.key);
 
-  const [block, gasPrice] = await Promise.all([
-    client.getBlock({ blockTag: "latest" }),
-    client.getGasPrice(),
-  ]);
+  let block;
+  let gasPrice;
+  let lastError;
+
+  // Try each RPC in order; the first one that answers wins.
+  for (const client of candidates) {
+    try {
+      [block, gasPrice] = await Promise.all([
+        client.getBlock({ blockTag: "latest" }),
+        client.getGasPrice(),
+      ]);
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError) throw lastError;
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const costWei = gasPrice * gasLimit;
