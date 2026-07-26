@@ -1046,7 +1046,26 @@ app.use((req, res, next) => {
   );
 
   res.on("finish", () => {
-    if (res.statusCode !== 402 || !hadPaymentHeader) return;
+    if (!hadPaymentHeader) return;
+
+    // Log a compact fingerprint for BOTH accepted and rejected payments. A
+    // rejected payload only means something next to an accepted one from the
+    // same client, so both are needed to spot the difference.
+    const rawPayload = req.get("x-payment") || req.get("payment-signature");
+    if (rawPayload) {
+      try {
+        const payload = JSON.parse(
+          Buffer.from(rawPayload, "base64").toString("utf8"),
+        );
+        console.error(
+          `[pay ${res.statusCode}] ${req.path} keys=[${Object.keys(payload).sort().join(",")}] bytes=${rawPayload.length}`,
+        );
+      } catch {
+        console.error(`[pay ${res.statusCode}] ${req.path} payload undecodable`);
+      }
+    }
+
+    if (res.statusCode !== 402) return;
 
     const header = res.getHeader("payment-required");
     let reason = "(no payment-required header on the response)";
