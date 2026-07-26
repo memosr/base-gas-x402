@@ -1068,9 +1068,36 @@ app.use((req, res, next) => {
 
     console.error(`[402] paid request rejected on ${req.method} ${req.path}: ${reason}`);
 
-    // Log every response header name too: the reason may travel in a header we
-    // are not expecting rather than in payment-required.
-    console.error(`[402] response headers: ${Object.keys(res.getHeaders()).join(", ")}`);
+    // The facilitator rejects the *client-supplied* payload, so log its shape.
+    // Signature material is deliberately not logged: field names and types are
+    // enough to tell a malformed payload from a well-formed one.
+    const raw = req.get("x-payment") || req.get("payment-signature");
+    if (raw) {
+      try {
+        const payload = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+        const shape = (value) => {
+          if (value === null) return "null";
+          if (Array.isArray(value)) return `array(${value.length})`;
+          if (typeof value !== "object") return typeof value;
+          return Object.fromEntries(
+            Object.entries(value).map(([k, v]) => [k, shape(v)]),
+          );
+        };
+        console.error(`[402] client payload shape: ${JSON.stringify(shape(payload))}`);
+        console.error(
+          `[402] client payload scalars: ${JSON.stringify({
+            x402Version: payload.x402Version,
+            scheme: payload.scheme,
+            network: payload.network,
+            resource: payload.resource ?? payload.payload?.resource,
+          })}`,
+        );
+      } catch (error) {
+        console.error(`[402] client payload undecodable: ${error.message}`);
+      }
+    } else {
+      console.error("[402] no x-payment header on the request");
+    }
   });
 
   next();
