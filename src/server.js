@@ -12,6 +12,12 @@ import {
 
 import { getGasData, MIN_GAS_LIMIT, MAX_GAS_LIMIT } from "./gas.js";
 import { getGasComparison } from "./compare.js";
+import {
+  startSampler,
+  coverage,
+  getHistory,
+  getCheapestWindow,
+} from "./history.js";
 
 // Common gas limits, surfaced in the discovery docs so agents know what to pass.
 const GAS_LIMIT_PRESETS = {
@@ -53,12 +59,37 @@ if (!/^\d+(\.\d+)?$/.test(COMPARE_PRICE_USD) || Number(COMPARE_PRICE_USD) <= 0) 
   );
 }
 
+// Price per /gas/history call. Higher than /gas because the value comes from
+// data collected over time, not from a single RPC read anyone can do for free.
+const HISTORY_PRICE_USD = process.env.HISTORY_PRICE_USD || "0.01";
+
+// Price per /gas/cheapest-window call. The most derived answer on the service:
+// it turns raw history into a scheduling decision.
+const WINDOW_PRICE_USD = process.env.WINDOW_PRICE_USD || "0.02";
+
+for (const [name, value] of [
+  ["HISTORY_PRICE_USD", HISTORY_PRICE_USD],
+  ["WINDOW_PRICE_USD", WINDOW_PRICE_USD],
+]) {
+  if (!/^\d+(\.\d+)?$/.test(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive decimal number, got "${value}"`);
+  }
+}
+
 // Display form ("$0.005") for the x402 accepts block and the landing page.
 const GAS_PRICE = `$${GAS_PRICE_USD}`;
 const COMPARE_PRICE = `$${COMPARE_PRICE_USD}`;
+const HISTORY_PRICE = `$${HISTORY_PRICE_USD}`;
+const WINDOW_PRICE = `$${WINDOW_PRICE_USD}`;
 // OpenAPI x-payment-info wants decimal USD with fixed precision.
 const GAS_PRICE_AMOUNT = Number(GAS_PRICE_USD).toFixed(6);
 const COMPARE_PRICE_AMOUNT = Number(COMPARE_PRICE_USD).toFixed(6);
+const HISTORY_PRICE_AMOUNT = Number(HISTORY_PRICE_USD).toFixed(6);
+const WINDOW_PRICE_AMOUNT = Number(WINDOW_PRICE_USD).toFixed(6);
+
+// Bounds for the shared `hours` lookback parameter.
+const MIN_HOURS = 1;
+const MAX_HOURS = Number(process.env.HISTORY_RETENTION_HOURS || 168);
 
 // Base Builder Code attribution (ERC-8021 Schema 2 "a" / app code). Advertised
 // in the /gas 402 PAYMENT-REQUIRED extensions so settlement calldata can be
@@ -130,6 +161,36 @@ const COMPARE_OUTPUT_EXAMPLE = {
   baseVsEthereum: "Base is 240.5x cheaper than Ethereum",
   unavailable: [],
   fetchedAt: "2026-07-25T18:02:36.639Z",
+};
+
+const HISTORY_OUTPUT_EXAMPLE = {
+  chain: "base-mainnet",
+  chainId: 8453,
+  requestedHours: 24,
+  units: "gwei",
+  currentGasPrice: 0.006,
+  verdict: "cheap",
+  summary: { min: 0.005, max: 0.031, avg: 0.009, median: 0.007 },
+  samples: [{ t: "2026-07-26T06:00:00.000Z", baseFee: 0.005, gasPrice: 0.006, priorityMedium: 0.001 }],
+  coverage: { samples: 288, hoursCovered: 24, retentionHours: 168 },
+  fetchedAt: "2026-07-26T06:08:54.972Z",
+};
+
+const WINDOW_OUTPUT_EXAMPLE = {
+  chain: "base-mainnet",
+  chainId: 8453,
+  requestedHours: 168,
+  units: "gwei",
+  hourlyAverages: [
+    { hourUtc: 6, samples: 84, avgGasPrice: 0.005 },
+    { hourUtc: 14, samples: 84, avgGasPrice: 0.019 },
+  ],
+  cheapestHourUtc: 6,
+  priciestHourUtc: 14,
+  savingsPercent: 73.7,
+  hoursObserved: 24,
+  coverage: { samples: 2016, hoursCovered: 168, retentionHours: 168 },
+  fetchedAt: "2026-07-26T06:08:54.972Z",
 };
 
 const routes = {
@@ -239,6 +300,99 @@ const routes = {
           required: [],
         },
         output: { example: COMPARE_OUTPUT_EXAMPLE },
+      }),
+      [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
+    },
+  },
+
+  "GET /gas/history": {
+    accepts: {
+      scheme: "exact",
+      network: PAYMENT_NETWORK,
+      price: HISTORY_PRICE,
+      payTo: PAY_TO_ADDRESS,
+    },
+    description:
+      "Historical Base mainnet gas prices over a lookback window, sampled continuously from the chain. Returns the time series plus min, max, average, and median gas price for the window, and a verdict on whether gas is currently cheap, normal, or expensive relative to that window. A live RPC call tells you the current price but not whether it is high or low; this does. Use it to decide whether to transact now or wait, detect congestion spikes, chart Base gas trends, or set gas budgets from real observed data.",
+    mimeType: "application/json",
+    serviceName: "base-gas-x402",
+    tags: [
+      "gas history",
+      "historical gas",
+      "gas trend",
+      "gas chart",
+      "time series",
+      "base",
+      "base-l2",
+      "gas price",
+      "congestion",
+      "should i transact now",
+      "onchain-data",
+    ],
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        input: { hours: 24 },
+        inputSchema: {
+          properties: {
+            hours: {
+              type: "integer",
+              minimum: MIN_HOURS,
+              maximum: MAX_HOURS,
+              default: 24,
+              description:
+                "Lookback window in hours. Defaults to 24. Check the free GET /health route first to see how much history has been collected.",
+            },
+          },
+          required: [],
+        },
+        output: { example: HISTORY_OUTPUT_EXAMPLE },
+      }),
+      [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
+    },
+  },
+
+  "GET /gas/cheapest-window": {
+    accepts: {
+      scheme: "exact",
+      network: PAYMENT_NETWORK,
+      price: WINDOW_PRICE,
+      payTo: PAY_TO_ADDRESS,
+    },
+    description:
+      "Identifies the cheapest hours of day to transact on Base, computed from continuously collected gas history. Returns average gas price bucketed by hour of day in UTC, ranked cheapest first, plus the cheapest hour, the priciest hour, and the percentage saved by waiting for the cheap window. Use it to schedule batch transactions, time an airdrop or mint, plan agent workloads around cheap gas, or answer when should I send this transaction.",
+    mimeType: "application/json",
+    serviceName: "base-gas-x402",
+    tags: [
+      "cheapest time to transact",
+      "gas timing",
+      "gas schedule",
+      "best time to send transaction",
+      "gas savings",
+      "hourly gas",
+      "base",
+      "base-l2",
+      "batch transactions",
+      "onchain-data",
+    ],
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        input: { hours: 168 },
+        inputSchema: {
+          properties: {
+            hours: {
+              type: "integer",
+              minimum: MIN_HOURS,
+              maximum: MAX_HOURS,
+              default: 168,
+              description:
+                "Lookback window in hours used to compute hourly averages. Defaults to 168 (7 days). Check the free GET /health route first to see how much history has been collected.",
+            },
+          },
+          required: [],
+        },
+        output: { example: WINDOW_OUTPUT_EXAMPLE },
       }),
       [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
     },
@@ -602,11 +756,233 @@ const OPENAPI_DOCUMENT = {
         },
       },
     },
+    "/gas/history": {
+      get: {
+        summary:
+          "Historical Base gas prices with trend statistics and a cheap/normal/expensive verdict (paid via x402)",
+        description:
+          `Returns historical Base mainnet gas prices over a lookback window, sampled continuously from the chain, together with min, max, average, and median gas price for that window and a verdict on whether gas is currently cheap, normal, or expensive relative to it. A live RPC call reports the current price but cannot say whether it is high or low; this endpoint can, because it has been watching. Common uses: decide whether to transact now or wait, detect congestion spikes on Base, chart Base gas trends over time, set gas budgets from real observed data, and backtest agent transaction timing. Every response includes a coverage object stating exactly how much history backs it. Check the free GET /health route first to see current coverage. Each call costs ${HISTORY_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+        operationId: "getGasHistory",
+        parameters: [
+          {
+            name: "hours",
+            in: "query",
+            required: false,
+            description:
+              "Lookback window in hours. Defaults to 24.",
+            schema: {
+              type: "integer",
+              minimum: MIN_HOURS,
+              maximum: MAX_HOURS,
+              default: 24,
+              example: 24,
+            },
+          },
+        ],
+        "x-payment-info": {
+          price: {
+            mode: "fixed",
+            currency: "USD",
+            amount: HISTORY_PRICE_AMOUNT,
+          },
+          protocols: [{ x402: {} }],
+        },
+        responses: {
+          200: {
+            description: "Gas history for the window (payment accepted).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    chain: { type: "string", example: "base-mainnet" },
+                    chainId: { type: "integer", example: 8453 },
+                    requestedHours: { type: "integer", example: 24 },
+                    units: { type: "string", example: "gwei" },
+                    currentGasPrice: { type: "number", example: 0.006 },
+                    verdict: {
+                      type: "string",
+                      enum: ["cheap", "normal", "expensive", "flat"],
+                      description:
+                        "Where the current gas price sits within the window's range.",
+                      example: "cheap",
+                    },
+                    summary: {
+                      type: "object",
+                      properties: {
+                        min: { type: "number", example: 0.005 },
+                        max: { type: "number", example: 0.031 },
+                        avg: { type: "number", example: 0.009 },
+                        median: { type: "number", example: 0.007 },
+                      },
+                    },
+                    samples: {
+                      type: "array",
+                      description: "Time series, oldest first.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          t: { type: "string", format: "date-time" },
+                          baseFee: { type: "number", example: 0.005 },
+                          gasPrice: { type: "number", example: 0.006 },
+                          priorityMedium: { type: "number", example: 0.001 },
+                        },
+                      },
+                    },
+                    coverage: {
+                      type: "object",
+                      description:
+                        "How much history actually backs this response.",
+                      properties: {
+                        samples: { type: "integer", example: 288 },
+                        hoursCovered: { type: "number", example: 24 },
+                        retentionHours: { type: "integer", example: 168 },
+                      },
+                    },
+                    fetchedAt: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          402: { description: "Payment Required" },
+        },
+      },
+    },
+    "/gas/cheapest-window": {
+      get: {
+        summary:
+          "Cheapest hours of day to transact on Base, from observed gas history (paid via x402)",
+        description:
+          `Identifies the cheapest hours of day to transact on Base, computed from continuously collected gas history. Returns average gas price bucketed by hour of day in UTC and ranked cheapest first, plus the cheapest hour, the priciest hour, and the percentage saved by waiting for the cheap window. Common uses: schedule batch transactions for cheap gas, time an NFT mint or airdrop, plan agent workloads around low-fee hours, cut gas spend on recurring on-chain jobs, and answer when should I send this transaction. This cannot be derived from a single RPC call at any price, because it requires historical observation. Every response includes a coverage object; with less than a full day of history the hourly ranking is provisional. Check the free GET /health route first. Each call costs ${WINDOW_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+        operationId: "getCheapestWindow",
+        parameters: [
+          {
+            name: "hours",
+            in: "query",
+            required: false,
+            description:
+              "Lookback window in hours used to compute hourly averages. Defaults to 168 (7 days).",
+            schema: {
+              type: "integer",
+              minimum: MIN_HOURS,
+              maximum: MAX_HOURS,
+              default: 168,
+              example: 168,
+            },
+          },
+        ],
+        "x-payment-info": {
+          price: {
+            mode: "fixed",
+            currency: "USD",
+            amount: WINDOW_PRICE_AMOUNT,
+          },
+          protocols: [{ x402: {} }],
+        },
+        responses: {
+          200: {
+            description: "Hourly gas ranking (payment accepted).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    chain: { type: "string", example: "base-mainnet" },
+                    chainId: { type: "integer", example: 8453 },
+                    requestedHours: { type: "integer", example: 168 },
+                    units: { type: "string", example: "gwei" },
+                    hourlyAverages: {
+                      type: "array",
+                      description: "Hour-of-day averages, cheapest first.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          hourUtc: { type: "integer", example: 6 },
+                          samples: { type: "integer", example: 84 },
+                          avgGasPrice: { type: "number", example: 0.005 },
+                        },
+                      },
+                    },
+                    cheapestHourUtc: { type: "integer", example: 6 },
+                    priciestHourUtc: { type: "integer", example: 14 },
+                    savingsPercent: {
+                      type: "number",
+                      description:
+                        "Percent saved by transacting in the cheapest hour instead of the priciest.",
+                      example: 73.7,
+                    },
+                    hoursObserved: { type: "integer", example: 24 },
+                    coverage: {
+                      type: "object",
+                      properties: {
+                        samples: { type: "integer", example: 2016 },
+                        hoursCovered: { type: "number", example: 168 },
+                        retentionHours: { type: "integer", example: 168 },
+                      },
+                    },
+                    fetchedAt: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          402: { description: "Payment Required" },
+        },
+      },
+    },
+    "/health": {
+      get: {
+        summary: "Service health and gas history coverage (free)",
+        description:
+          "Free health check. Reports service uptime and, more usefully, exactly how much gas history has been collected so far: sample count, hours covered, sampling interval, and retention. Call this before paying for /gas/history or /gas/cheapest-window to confirm the coverage is deep enough for your use case. No payment required.",
+        operationId: "getHealth",
+        responses: {
+          200: {
+            description: "Service status and history coverage.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    status: { type: "string", example: "ok" },
+                    uptimeSeconds: { type: "number", example: 3600 },
+                    history: {
+                      type: "object",
+                      properties: {
+                        samples: { type: "integer", example: 288 },
+                        hoursCovered: { type: "number", example: 24 },
+                        oldestSample: { type: "string", format: "date-time" },
+                        newestSample: { type: "string", format: "date-time" },
+                        sampleIntervalSeconds: { type: "integer", example: 300 },
+                        retentionHours: { type: "integer", example: 168 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };
 
 app.get("/openapi.json", (_req, res) => {
   res.json(OPENAPI_DOCUMENT);
+});
+
+// --- Free health route --------------------------------------------------
+// Declared BEFORE the paywall so it stays free. Its real job is disclosure:
+// history coverage is visible here so agents never pay for /gas/history or
+// /gas/cheapest-window only to find the buffer is still warming up.
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    uptimeSeconds: Number(process.uptime().toFixed(0)),
+    history: coverage(),
+  });
 });
 
 // JSON service description for programmatic clients (was previously at GET /).
@@ -620,6 +996,9 @@ app.get("/info", (_req, res) => {
       "GET /info": "This service description as JSON (free).",
       "GET /gas": `Live Base mainnet gas data. Costs ${GAS_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
       "GET /gas/compare": `Live gas comparison across Base, OP Mainnet, Arbitrum One, and Ethereum. Costs ${COMPARE_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
+      "GET /gas/history": `Historical Base gas prices with trend statistics and a cheap/normal/expensive verdict. Costs ${HISTORY_PRICE} per call.`,
+      "GET /gas/cheapest-window": `Cheapest hours of day to transact on Base, from observed history. Costs ${WINDOW_PRICE} per call.`,
+      "GET /health": "Service status and gas history coverage (free).",
     },
     payment: {
       protocol: "x402",
@@ -628,6 +1007,8 @@ app.get("/info", (_req, res) => {
       prices: {
         "GET /gas": GAS_PRICE,
         "GET /gas/compare": COMPARE_PRICE,
+        "GET /gas/history": HISTORY_PRICE,
+        "GET /gas/cheapest-window": WINDOW_PRICE,
       },
     },
   });
@@ -716,9 +1097,65 @@ app.get("/gas/compare", async (req, res) => {
   }
 });
 
+/**
+ * Parses the shared optional `hours` lookback parameter.
+ */
+function parseHours(raw, fallback) {
+  if (raw === undefined) return { hours: fallback };
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < MIN_HOURS || parsed > MAX_HOURS) {
+    return {
+      error: {
+        error: `hours must be an integer between ${MIN_HOURS} and ${MAX_HOURS}`,
+        received: raw,
+      },
+    };
+  }
+
+  return { hours: parsed };
+}
+
+app.get("/gas/history", (req, res) => {
+  const { hours, error: invalid } = parseHours(req.query.hours, 24);
+  if (invalid) return res.status(400).json(invalid);
+
+  try {
+    res.json(getHistory(hours));
+  } catch (error) {
+    console.error("[/gas/history] failed:", error);
+    res.status(502).json({
+      error: "Failed to build gas history",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.get("/gas/cheapest-window", (req, res) => {
+  const { hours, error: invalid } = parseHours(req.query.hours, 168);
+  if (invalid) return res.status(400).json(invalid);
+
+  try {
+    res.json(getCheapestWindow(hours));
+  } catch (error) {
+    console.error("[/gas/cheapest-window] failed:", error);
+    res.status(502).json({
+      error: "Failed to compute cheapest window",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`base-gas-x402 listening on http://localhost:${PORT}`);
   console.log(`  free:  GET /`);
-  console.log(`  paid:  GET /gas          (${GAS_PRICE} via x402, ${PAYMENT_NETWORK})`);
-  console.log(`  paid:  GET /gas/compare  (${COMPARE_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  free:  GET /health`);
+  console.log(`  paid:  GET /gas                  (${GAS_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas/compare          (${COMPARE_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas/history          (${HISTORY_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas/cheapest-window  (${WINDOW_PRICE} via x402, ${PAYMENT_NETWORK})`);
+
+  // Start collecting only once the server is actually up, so a boot failure
+  // does not leave a sampler running against a half-initialised process.
+  startSampler();
 });
