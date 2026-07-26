@@ -216,28 +216,13 @@ const routes = {
     // The presence of the `bazaar` discovery extension is what makes this
     // resource discoverable; tags act as the category/search keywords
     // (here: an "infrastructure" gas/fees service on Base).
+    // Short on purpose: see the size note on /gas/history below. The
+    // discovery-driving copy lives in the OpenAPI document instead.
     description:
-      "Live Base mainnet (Base L2, Coinbase Base) gas prices read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers in gwei, current gas price, and an estimated ETH transfer cost. Use it to check gas fees before sending a transaction on Base, estimate transaction cost, budget agent spending, find cheap windows to transact, monitor network congestion, or compare Base L2 fees to other chains.",
+      "Live Base mainnet gas: EIP-1559 base fee, low/medium/high priority tiers in gwei, and a transaction cost estimate for any gas limit.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
-    tags: [
-      "gas",
-      "gas price",
-      "gas oracle",
-      "base",
-      "base-l2",
-      "coinbase-base",
-      "base mainnet",
-      "fees",
-      "l2 fees",
-      "eip-1559",
-      "base fee",
-      "priority fee",
-      "gwei",
-      "transaction cost",
-      "onchain-data",
-      "infrastructure",
-    ],
+    tags: ["gas", "gas price", "gas oracle", "base", "base-l2", "onchain-data"],
     // Bazaar discovery extension (preserved) + Base Builder Code attribution.
     extensions: {
       ...declareDiscoveryExtension({
@@ -273,23 +258,15 @@ const routes = {
       payTo: PAY_TO_ADDRESS,
     },
     description:
-      "Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's base fee, gas price, and estimated cost for a given gas limit, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Use it to pick the cheapest chain for a transaction, decide whether to bridge, compare L2 fees, or route agent transactions to the lowest-cost network.",
+      "Live gas cost comparison across Base, OP Mainnet, Arbitrum One, and Ethereum in one call, ranked cheapest first.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: [
-      "gas",
       "gas comparison",
-      "compare chains",
       "cross-chain",
-      "multi-chain",
       "l2 fees",
       "base",
-      "optimism",
-      "arbitrum",
-      "ethereum",
       "cheapest chain",
-      "transaction cost",
-      "bridge decision",
       "onchain-data",
     ],
     extensions: {
@@ -364,19 +341,15 @@ const routes = {
       payTo: PAY_TO_ADDRESS,
     },
     description:
-      "Identifies the cheapest hours of day to transact on Base, computed from continuously collected gas history. Returns average gas price bucketed by hour of day in UTC, ranked cheapest first, plus the cheapest hour, the priciest hour, and the percentage saved by waiting for the cheap window. Use it to schedule batch transactions, time an airdrop or mint, plan agent workloads around cheap gas, or answer when should I send this transaction.",
+      "Cheapest hours of day to transact on Base, from collected gas history: hourly averages in UTC ranked cheapest first, plus the savings percent.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: [
-      "cheapest time to transact",
       "gas timing",
-      "gas schedule",
-      "best time to send transaction",
+      "cheapest time to transact",
       "gas savings",
-      "hourly gas",
       "base",
       "base-l2",
-      "batch transactions",
       "onchain-data",
     ],
     extensions: {
@@ -1049,9 +1022,19 @@ app.use((req, res, next) => {
         const payload = JSON.parse(
           Buffer.from(rawPayload, "base64").toString("utf8"),
         );
-        console.error(
-          `[pay ${res.statusCode}] ${req.path} keys=[${Object.keys(payload).sort().join(",")}] bytes=${rawPayload.length}`,
-        );
+        // The CDP facilitator rejects oversized payment payloads and reports it
+        // as a schema error, which is close to undebuggable in production.
+        // Measured on Base: 4188 bytes accepted, 4260 rejected. Warn well before
+        // that so a future description edit does not silently break a route.
+        const PAYLOAD_WARN_BYTES = 3800;
+        if (res.statusCode !== 200 || rawPayload.length > PAYLOAD_WARN_BYTES) {
+          console.error(
+            `[pay ${res.statusCode}] ${req.path} bytes=${rawPayload.length}` +
+              (rawPayload.length > PAYLOAD_WARN_BYTES
+                ? ` WARNING: approaching the facilitator payload size limit (~4200). Shorten this route's bazaar description, tags, or output example.`
+                : ""),
+          );
+        }
       } catch {
         console.error(`[pay ${res.statusCode}] ${req.path} payload undecodable`);
       }
