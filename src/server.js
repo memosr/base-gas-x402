@@ -781,8 +781,21 @@ const OPENAPI_DOCUMENT = {
                       type: "string",
                       enum: ["cheap", "normal", "expensive", "flat"],
                       description:
-                        "Where the current gas price sits within the window's range.",
-                      example: "cheap",
+                        "Where the current gas price sits within the window's range. Returns `flat` when the window's spread is under 1%, which on Base is common: the chain sits on its fee floor for hours and there is nothing to time.",
+                      example: "flat",
+                    },
+                    verdictNote: {
+                      type: "string",
+                      description:
+                        "Plain-language explanation of the verdict, including the observed spread.",
+                      example:
+                        "Gas has not moved meaningfully in this window (spread 0.0067%, below the 1% threshold). There is nothing to wait for.",
+                    },
+                    spreadPercent: {
+                      type: "number",
+                      description:
+                        "Width of the window's range as a percentage of its minimum. Below 1% the verdict is reported as `flat`.",
+                      example: 0.0067,
                     },
                     summary: {
                       type: "object",
@@ -869,9 +882,23 @@ const OPENAPI_DOCUMENT = {
                     chainId: { type: "integer", example: 8453 },
                     requestedHours: { type: "integer", example: 168 },
                     units: { type: "string", example: "gwei" },
+                    hasDailyCycle: {
+                      type: "boolean",
+                      description:
+                        "Whether the chain actually has a usable daily gas cycle in this window. False means timing by hour of day saves nothing, and the ranking below is not actionable.",
+                      example: false,
+                    },
+                    recommendation: {
+                      type: "string",
+                      description:
+                        "The headline answer in plain language, so the caller does not have to infer it from the ranking.",
+                      example:
+                        "No meaningful daily gas cycle on this chain: the gap between the cheapest and priciest hour is 0%. Timing a transaction by hour of day will not save anything.",
+                    },
                     hourlyAverages: {
                       type: "array",
-                      description: "Hour-of-day averages, cheapest first.",
+                      description:
+                        "Hour-of-day averages, cheapest first. Only actionable when hasDailyCycle is true.",
                       items: {
                         type: "object",
                         properties: {

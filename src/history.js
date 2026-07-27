@@ -133,21 +133,38 @@ export function getHistory(hours) {
 
   let current = null;
   let verdict = null;
+  let verdictNote = null;
+  let spreadPercent = null;
 
   if (window.length > 0) {
     current = window[window.length - 1].gasPrice;
 
-    if (summary && summary.max > summary.min) {
+    if (summary && summary.min > 0) {
+      // How wide the window actually is, as a percentage of the floor.
+      spreadPercent = Number(
+        (((summary.max - summary.min) / summary.min) * 100).toFixed(4),
+      );
+    }
+
+    // A cheap/normal/expensive verdict only means something if the window has
+    // meaningful variation. Base sits on its fee floor for hours at a time, so
+    // `max > min` can be true by a rounding artifact and still produce a
+    // confident-sounding "cheap" that a caller would wrongly read as "act now".
+    // Below this threshold the honest answer is that there is nothing to time.
+    const MEANINGFUL_SPREAD_PERCENT = 1;
+
+    if (spreadPercent !== null && spreadPercent >= MEANINGFUL_SPREAD_PERCENT) {
       // Where the current price sits in the window's range, 0 = cheapest seen.
       const position = (current - summary.min) / (summary.max - summary.min);
       verdict =
-        position <= 0.33
-          ? "cheap"
-          : position <= 0.66
-            ? "normal"
-            : "expensive";
+        position <= 0.33 ? "cheap" : position <= 0.66 ? "normal" : "expensive";
+      verdictNote = `Current price sits at ${Math.round(position * 100)}% of the window's range (spread ${spreadPercent}%).`;
     } else {
       verdict = "flat";
+      verdictNote =
+        spreadPercent === null
+          ? "Not enough data to judge variation."
+          : `Gas has not moved meaningfully in this window (spread ${spreadPercent}%, below the ${MEANINGFUL_SPREAD_PERCENT}% threshold). There is nothing to wait for.`;
     }
   }
 
@@ -158,6 +175,8 @@ export function getHistory(hours) {
     units: "gwei",
     currentGasPrice: current,
     verdict,
+    verdictNote,
+    spreadPercent,
     summary,
     samples: window.map((s) => ({
       t: new Date(s.t).toISOString(),
@@ -208,16 +227,37 @@ export function getCheapestWindow(hours) {
     );
   }
 
+  // Ranking hours by average price implies the hours differ. On a chain that
+  // sits at its fee floor they do not, and returning a confident "cheapest hour"
+  // would be selling a decision that cannot be made. Say so instead.
+  const MEANINGFUL_SAVINGS_PERCENT = 1;
+  const hasDailyCycle =
+    savingsPercent !== null && savingsPercent >= MEANINGFUL_SAVINGS_PERCENT;
+
+  let recommendation;
+  if (hourly.length === 0) {
+    recommendation = "No history collected yet. Check GET /health for coverage.";
+  } else if (hasDailyCycle) {
+    recommendation = `Transact around ${String(cheapest.hourUtc).padStart(2, "0")}:00 UTC to save about ${savingsPercent}% versus the priciest hour (${String(priciest.hourUtc).padStart(2, "0")}:00 UTC).`;
+  } else {
+    recommendation = `No meaningful daily gas cycle on this chain: the gap between the cheapest and priciest hour is ${savingsPercent ?? 0}%. Timing a transaction by hour of day will not save anything. Transact whenever you need to.`;
+  }
+
   return {
     chain: "base-mainnet",
     chainId: 8453,
     requestedHours: hours,
     units: "gwei",
-    // Hours seen so far, cheapest first. Coverage below says how much to trust it.
+    // The headline answer, stated plainly, so a caller does not have to infer
+    // it from the ranking below.
+    hasDailyCycle,
+    recommendation,
+    savingsPercent,
+    // Hours seen so far, cheapest first. Only actionable when hasDailyCycle is
+    // true; kept either way because the raw distribution is still data.
     hourlyAverages: hourly,
     cheapestHourUtc: cheapest ? cheapest.hourUtc : null,
     priciestHourUtc: priciest ? priciest.hourUtc : null,
-    savingsPercent,
     hoursObserved: hourly.length,
     coverage: coverage(),
     fetchedAt: new Date().toISOString(),

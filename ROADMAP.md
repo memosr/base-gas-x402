@@ -28,6 +28,33 @@
 | `GET /gas/cheapest-window` | $0.02 |
 | `GET /health` | ücretsiz |
 
+## 27 Temmuz gecesi: iki gizli hata
+
+**1. `trust proxy` eksikti (kritik)**
+
+Railway TLS'i kenarda sonlandırıp isteği düz HTTP olarak iletiyor. Express `req.protocol` değerini `http` görüyor, x402 middleware kaynak URL'ini `http://...` olarak ilan ediyordu. Bazaar kaydı bunu reddediyordu:
+
+```
+discovery request validation failed:
+resource must start with 'https://' when protocol type is http
+```
+
+Bu **her saat, servisin ilk gününden beri** oluyordu. x402scan'in origin'i hiç otomatik güncellememesinin sebebi buydu. Çözüm: `app.set("trust proxy", true)`.
+
+**2. Ödeme yükü boyut sınırı**
+
+402 challenge'ındaki bazaar metadata'sı (açıklama, etiketler, örnek çıktı) x402 ödeme yüküne olduğu gibi gömülüyor. CDP facilitator payload'a boyut sınırı uyguluyor ve aşıldığında bunu şema hatası olarak raporluyor:
+
+```
+'paymentPayload' is invalid: must match one of [x402V2Pay...
+```
+
+Ölçülen değerler: **4188 byte kabul, 4260 byte ret.** `/gas/history` uzun açıklaması yüzünden sınırın üstündeydi ve ödeme alamıyordu. Diğer üç endpoint şans eseri altında kalmıştı, `/gas/compare` sınıra 70 byte mesafedeydi.
+
+Çözüm: tüm route'larda bazaar açıklamaları 400-470 karakterden 112-155'e indirildi, etiketler 10-16'dan 5-6'ya. Keşfi besleyen zengin metin OpenAPI dokümanında kaldı, o ödeme yüküne dahil değil. Ayrıca 3800 byte üstünde uyarı loglayan bir erken uyarı eklendi.
+
+**Çıkarılacak ders:** bu iki hata da sessizdi. Discovery aracı temiz rapor veriyordu, endpoint'ler canlıydı, ama biri keşfi tamamen bloke ediyor diğeri bir endpoint'in para almasını engelliyordu. Loglara bakmadan ikisi de bulunamazdı.
+
 **Yol boyunca çıkan ek bulgular**
 
 - Alchemy API anahtarı `/gas` yanıtında sızıyordu, kapatıldı. Anahtarın rotate edilmesi gerekiyor.
