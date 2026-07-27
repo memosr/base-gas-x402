@@ -377,8 +377,12 @@ const routes = {
 };
 
 // --- Free routes --------------------------------------------------------
-// GET / serves a small dark-themed HTML landing page. The service metadata
-// that used to live here (for JSON clients) now lives at GET /info below.
+// GET / serves a one-line pointer to the public site. The marketing and
+// documentation site lives at SITE_URL and is deployed separately, so this
+// process stays a plain, fast API. Service metadata for JSON clients is at
+// GET /info. The two verification meta tags below must stay on this origin.
+const SITE_URL = "https://base-gas-x402.vercel.app";
+
 const LANDING_PAGE_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -386,134 +390,37 @@ const LANDING_PAGE_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="talentapp:project_verification" content="c305bf15e9cb197df5136336c90c58273e8bb0e372e5c4a821d40e2a96ed2d7f843902f75c5ffcc0c4b3243fe26cab9d77ebe957d5487389e09e6c8804356292">
 <meta name="base:app_id" content="6a39a0374c49dc5fd7753e72" />
+<meta name="description" content="Pay-per-call gas oracle for Base mainnet, gated with the x402 payment protocol. Documentation at ${SITE_URL}" />
+<link rel="canonical" href="${SITE_URL}" />
 <title>base-gas-x402</title>
 <style>
-  :root {
-    --bg: #0b0e14;
-    --surface: #141925;
-    --border: #232a3a;
-    --text: #e6e9ef;
-    --muted: #9aa3b2;
-    --accent: #5b8cff;
-    --code-bg: #0d1018;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  main {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 3rem 1.25rem 4rem;
-  }
-  h1 {
-    margin: 0 0 .5rem;
-    font-size: clamp(1.9rem, 1.2rem + 3vw, 2.6rem);
-    letter-spacing: -0.02em;
-  }
-  .lead {
-    color: var(--muted);
-    font-size: 1.05rem;
-    margin: 0 0 .75rem;
-  }
-  .lead a { color: var(--accent); }
-  .price {
-    display: inline-block;
-    margin-bottom: 2rem;
-    padding: .2rem .6rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: .85rem;
-    color: var(--accent);
-    background: var(--surface);
-  }
-  h2 {
-    font-size: 1.1rem;
-    margin: 2rem 0 .75rem;
-    letter-spacing: -0.01em;
-  }
-  ol { padding-left: 1.2rem; margin: 0; color: var(--muted); }
-  ol li { margin: .25rem 0; }
-  ol code { color: var(--text); }
-  pre {
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem;
-    overflow-x: auto;
-    margin: .5rem 0 0;
-  }
-  code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: .9em;
-  }
-  pre code { color: #b9c7ff; }
-  .links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .75rem;
-    margin-top: 1rem;
-  }
-  .links a {
-    color: var(--text);
-    text-decoration: none;
-    padding: .55rem .9rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
-    transition: border-color .15s ease, color .15s ease;
-  }
-  .links a:hover { border-color: var(--accent); color: var(--accent); }
-  footer {
-    margin-top: 3rem;
-    color: var(--muted);
-    font-size: .85rem;
-    border-top: 1px solid var(--border);
-    padding-top: 1rem;
-  }
-  footer code { color: var(--text); }
+  body { margin: 0; background: #0b0e14; color: #e6e9ef;
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  main { max-width: 620px; margin: 0 auto; padding: 4rem 1.25rem; }
+  h1 { margin: 0 0 .75rem; font-size: 1.5rem; letter-spacing: -0.02em; }
+  p { margin: 0 0 1rem; color: #9aa3b2; }
+  a { color: #5b8cff; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; color: #e6e9ef; }
 </style>
 </head>
 <body>
 <main>
   <h1>base-gas-x402</h1>
-  <p class="lead">
-    A pay-per-call, live Base mainnet gas API gated with
-    <a href="https://x402.org">x402</a>.
-    Each call costs ${GAS_PRICE} USDC, settled on Base mainnet (${PAYMENT_NETWORK}).
-  </p>
-  <span class="price">${GAS_PRICE} USDC / call &middot; ${PAYMENT_NETWORK}</span>
-
-  <h2>How it works</h2>
-  <ol>
-    <li>Request <code>GET /gas</code></li>
-    <li>Server replies <code>402 Payment Required</code> with payment details</li>
-    <li>Pay ${GAS_PRICE} USDC over x402</li>
-    <li>Retry and receive the live gas JSON</li>
-  </ol>
-
-  <h2>Try it (no payment, see the 402)</h2>
-  <pre><code>curl -i https://base-gas-x402-production.up.railway.app/gas</code></pre>
-
-  <h2>Links</h2>
-  <div class="links">
-    <a href="https://github.com/memosr/base-gas-x402">API repo</a>
-    <a href="https://github.com/memosr/base-gas-mcp">MCP repo</a>
-  </div>
-
-  <footer>
-    Machine-readable service info: <code>GET /info</code>
-  </footer>
+  <p>Pay-per-call gas oracle for Base mainnet, gated with the x402 payment protocol.</p>
+  <p>Documentation and setup: <a href="${SITE_URL}">${SITE_URL}</a></p>
+  <p>Machine-readable: <a href="/openapi.json"><code>GET /openapi.json</code></a>,
+     <a href="/info"><code>GET /info</code></a>,
+     <a href="/health"><code>GET /health</code></a></p>
 </main>
 </body>
 </html>`;
 
 app.get("/", (_req, res) => {
-  res.type("html").send(LANDING_PAGE_HTML);
+  res
+    .type("html")
+    .set("Cache-Control", "public, max-age=300")
+    .send(LANDING_PAGE_HTML);
 });
 
 // --- Favicon ------------------------------------------------------------
