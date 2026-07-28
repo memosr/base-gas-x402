@@ -1,18 +1,19 @@
 import { getGasData } from "./gas.js";
+import * as store from "./store.js";
 
 /**
- * In-memory gas history.
+ * Gas history.
  *
  * This is the part a free RPC cannot replace. `eth_gasPrice` tells you what gas
  * costs right now; it cannot tell you whether that is high or low, or when the
  * cheap hours are. Answering that requires someone to have been watching, which
  * is exactly what this module does.
  *
- * Storage is a plain in-process ring buffer: at one sample every 5 minutes,
- * seven days of history is ~2000 records of ~100 bytes. Persisting that to Redis
- * or a volume would cost money and operational surface for no benefit at this
- * traffic level. The tradeoff is that a redeploy resets the buffer, which is why
- * every response reports its own coverage instead of pretending to be complete.
+ * Reads are served from an in-process ring buffer, so a query never waits on
+ * the network. When Upstash credentials are present the same samples are also
+ * written to Redis and reloaded at boot, so a redeploy no longer destroys the
+ * one asset here that takes real time to accumulate. Without credentials the
+ * module runs in memory only and `/health` reports which mode is active.
  */
 
 const SAMPLE_INTERVAL_MS = Number(
@@ -40,15 +41,22 @@ function prune() {
 async function takeSample() {
   try {
     const data = await getGasData();
-    samples.push({
+    const sample = {
       t: Date.parse(data.fetchedAt),
       baseFee: Number(data.baseFeePerGas),
       gasPrice: Number(data.gasPrice),
       priorityMedium: Number(data.priorityFeePerGas.medium),
-    });
+    };
+    samples.push(sample);
     sampleCount += 1;
     lastError = null;
     prune();
+
+    // Persistence failing must not lose the sample we just took or stop the
+    // loop: the in-memory buffer is still correct, only durability is degraded.
+    store.append(sample, RETENTION_HOURS).catch((error) => {
+      console.error("[history] persist failed:", error.message);
+    });
   } catch (error) {
     // A failed sample must never crash the sampler loop: a transient RPC error
     // would otherwise silently kill history collection for the whole process.
@@ -58,11 +66,28 @@ async function takeSample() {
 }
 
 /** Starts the background sampler. Safe to call once at boot. */
-export function startSampler() {
+export async function startSampler() {
   if (startedAt) return;
   startedAt = Date.now();
 
-  // Take one immediately so a freshly deployed instance is not completely blind.
+  // Restore first, so a freshly deployed instance answers with real history
+  // instead of pretending the chain only started existing at boot.
+  if (store.isEnabled) {
+    try {
+      const restored = await store.load(RETENTION_HOURS);
+      samples.push(...restored);
+      prune();
+      console.log(`[history] restored ${samples.length} samples from Redis`);
+    } catch (error) {
+      console.error("[history] restore failed, starting cold:", error.message);
+    }
+  } else {
+    console.log(
+      "[history] no Upstash credentials, running in memory only (a redeploy will reset history)",
+    );
+  }
+
+  // Take one immediately so the buffer is never empty after boot.
   takeSample();
   const timer = setInterval(takeSample, SAMPLE_INTERVAL_MS);
   timer.unref?.();
@@ -101,6 +126,9 @@ export function coverage() {
     sampleIntervalSeconds: SAMPLE_INTERVAL_MS / 1000,
     retentionHours: RETENTION_HOURS,
     totalSamplesTaken: sampleCount,
+    // Whether history survives a redeploy. Callers deciding how much to trust a
+    // long lookback deserve to know if the buffer can vanish on the next push.
+    durable: store.isEnabled,
     lastError,
   };
 }
@@ -234,13 +262,39 @@ export function getCheapestWindow(hours) {
   const hasDailyCycle =
     savingsPercent !== null && savingsPercent >= MEANINGFUL_SAVINGS_PERCENT;
 
+  // A spike seen on one day is an event; the same spike seen on several days is
+  // a pattern, and the ranking above cannot tell them apart. What settles it is
+  // how many times the hour that drives savingsPercent has actually been
+  // observed. Counting distinct calendar dates would overcount, since a 24-hour
+  // window straddles two dates while covering each hour exactly once. Dividing
+  // that hour's sample count by the samples-per-hour rate is exact.
+  const samplesPerHour = 3600_000 / SAMPLE_INTERVAL_MS;
+  const daysObserved = priciest
+    ? Number((priciest.samples / samplesPerHour).toFixed(1))
+    : 0;
+
+  const CONFIDENT_DAYS = 3;
+  const confidence =
+    daysObserved >= CONFIDENT_DAYS
+      ? "pattern"
+      : daysObserved >= 2
+        ? "provisional"
+        : "single-day";
+
   let recommendation;
   if (hourly.length === 0) {
     recommendation = "No history collected yet. Check GET /health for coverage.";
   } else if (hasDailyCycle) {
-    recommendation = `Transact around ${String(cheapest.hourUtc).padStart(2, "0")}:00 UTC to save about ${savingsPercent}% versus the priciest hour (${String(priciest.hourUtc).padStart(2, "0")}:00 UTC).`;
+    const base = `Transact around ${String(cheapest.hourUtc).padStart(2, "0")}:00 UTC to save about ${savingsPercent}% versus the priciest hour (${String(priciest.hourUtc).padStart(2, "0")}:00 UTC).`;
+    const caveat =
+      confidence === "pattern"
+        ? ` This holds across ${daysObserved} days of observation.`
+        : confidence === "provisional"
+          ? ` Based on only ${daysObserved} days, so treat it as provisional rather than a proven daily rhythm.`
+          : " Based on a single day, so this is one observed spike, not yet a proven daily rhythm.";
+    recommendation = base + caveat;
   } else {
-    recommendation = `No meaningful daily gas cycle on this chain: the gap between the cheapest and priciest hour is ${savingsPercent ?? 0}%. Timing a transaction by hour of day will not save anything. Transact whenever you need to.`;
+    recommendation = `No meaningful daily gas cycle in this window: the gap between the cheapest and priciest hour is ${savingsPercent ?? 0}%. Timing a transaction by hour of day would not have saved anything here. Note that Base sits on its fee floor most hours and spikes occasionally, so a longer window may still find one.`;
   }
 
   return {
@@ -253,6 +307,10 @@ export function getCheapestWindow(hours) {
     hasDailyCycle,
     recommendation,
     savingsPercent,
+    // Qualifiers on savingsPercent. One day of data can produce a large number
+    // from a single spike; these say how much weight it deserves.
+    daysObserved,
+    confidence,
     // Hours seen so far, cheapest first. Only actionable when hasDailyCycle is
     // true; kept either way because the raw distribution is still data.
     hourlyAverages: hourly,

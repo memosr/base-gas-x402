@@ -820,8 +820,21 @@ const OPENAPI_DOCUMENT = {
                     savingsPercent: {
                       type: "number",
                       description:
-                        "Percent saved by transacting in the cheapest hour instead of the priciest.",
-                      example: 73.7,
+                        "Percent saved by transacting in the cheapest hour instead of the priciest. Read it together with daysObserved and confidence: a large figure from a single day is one spike, not a rhythm.",
+                      example: 79.1,
+                    },
+                    daysObserved: {
+                      type: "number",
+                      description:
+                        "How many times the hour driving savingsPercent has actually been observed. 1 means the window covers a single day.",
+                      example: 1,
+                    },
+                    confidence: {
+                      type: "string",
+                      enum: ["single-day", "provisional", "pattern"],
+                      description:
+                        "How much weight savingsPercent deserves. `single-day` is one observed spike, `provisional` is two days, `pattern` is three or more.",
+                      example: "single-day",
                     },
                     hoursObserved: { type: "integer", example: 24 },
                     coverage: {
@@ -1169,5 +1182,9 @@ app.listen(PORT, () => {
 
   // Start collecting only once the server is actually up, so a boot failure
   // does not leave a sampler running against a half-initialised process.
-  startSampler();
+  // Restoring from Redis makes this async; a failure there must not take down
+  // an otherwise healthy server, so it is logged rather than thrown.
+  startSampler().catch((error) => {
+    console.error("[history] sampler failed to start:", error);
+  });
 });
