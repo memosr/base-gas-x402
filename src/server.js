@@ -859,7 +859,7 @@ const OPENAPI_DOCUMENT = {
       get: {
         summary: "Service health and gas history coverage (free)",
         description:
-          "Free health check. Reports service uptime and, more usefully, exactly how much gas history has been collected so far: sample count, hours covered, sampling interval, and retention. Call this before paying for /gas/history or /gas/cheapest-window to confirm the coverage is deep enough for your use case. No payment required.",
+          "Free health check. Reports service uptime and, more usefully, exactly how much gas history has been collected so far: sample count, hours covered, sampling interval, and retention. Call this before paying for /gas/history or /gas/cheapest-window to confirm the coverage is deep enough for your use case. No payment or wallet required. The response also carries a nextSteps object with ready-to-run commands, so a first-time caller is not left holding raw JSON with nowhere to go.",
         operationId: "getHealth",
         // An empty security array is how OpenAPI declares an operation as
         // explicitly public. Without it, discovery cannot tell "free" apart
@@ -875,6 +875,24 @@ const OPENAPI_DOCUMENT = {
                   properties: {
                     status: { type: "string", example: "ok" },
                     uptimeSeconds: { type: "number", example: 3600 },
+                    whatIsThis: {
+                      type: "string",
+                      description:
+                        "Plain-language explanation of this route, for callers who reach it first.",
+                    },
+                    nextSteps: {
+                      type: "object",
+                      description:
+                        "Ready-to-run commands and links for going from this status check to actual gas data.",
+                      properties: {
+                        website: { type: "string" },
+                        seeThe402ChallengeForFree: { type: "string" },
+                        getGasData: { type: "string" },
+                        needAWallet: { type: "string" },
+                        allRoutesAndPrices: { type: "string" },
+                        machineReadableSpec: { type: "string" },
+                      },
+                    },
                     history: {
                       type: "object",
                       properties: {
@@ -905,11 +923,30 @@ app.get("/openapi.json", (_req, res) => {
 // Declared BEFORE the paywall so it stays free. Its real job is disclosure:
 // history coverage is visible here so agents never pay for /gas/history or
 // /gas/cheapest-window only to find the buffer is still warming up.
-app.get("/health", (_req, res) => {
+app.get("/health", (req, res) => {
+  const origin = `${req.protocol}://${req.get("host")}`;
+
   res.json({
     status: "ok",
     uptimeSeconds: Number(process.uptime().toFixed(0)),
+
+    // A first-time caller reported this response as an error: it is valid JSON
+    // with no failure in it, but it also gave them nothing to do next. `/health`
+    // is the entry point advertised everywhere, so it has to answer "what now?"
+    // as well as "is it up?".
+    whatIsThis:
+      "Free status endpoint. It reports how much gas history has been collected so far, so you can decide whether the paid history routes are worth calling. It returns no gas data itself and requires no payment or wallet.",
+
     history: coverage(),
+
+    nextSteps: {
+      website: "https://base-gas-x402.vercel.app",
+      seeThe402ChallengeForFree: `curl -i ${origin}/gas`,
+      getGasData: `npx agentcash@latest fetch "${origin}/gas"`,
+      needAWallet: "npx agentcash@latest onboard",
+      allRoutesAndPrices: `${origin}/info`,
+      machineReadableSpec: `${origin}/openapi.json`,
+    },
   });
 });
 
