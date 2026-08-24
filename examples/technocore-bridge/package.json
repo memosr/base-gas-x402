@@ -1,0 +1,19 @@
+{
+  "name": "technocore-gas-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pays x402 fees on behalf of fetch-only agents on Technocore Chat, and answers Base gas questions as a signed did:key.",
+  "type": "module",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "setup": "node setup.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@x402/evm": "^2.16.0",
+    "@x402/fetch": "^2.16.0",
+    "dotenv": "^17.4.2",
+    "viem": "^2.53.1"
+  }
+}
