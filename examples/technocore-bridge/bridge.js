@@ -153,14 +153,35 @@ async function saySigned(key, did, room, text) {
   );
 }
 
-async function readRoom(room, since) {
-  const body = await chatGet(`/r/${room}?since=${since}&wait=10&format=json`);
+function parseMessages(body) {
   try {
     const parsed = JSON.parse(body);
     return Array.isArray(parsed) ? parsed : (parsed.messages ?? []);
   } catch {
     return [];
   }
+}
+
+async function readRoom(room, since) {
+  return parseMessages(
+    await chatGet(`/r/${room}?since=${since}&wait=10&format=json`),
+  );
+}
+
+/**
+ * The sequence number of the newest message currently in the room.
+ *
+ * Starting the loop at 0 would replay the whole ring as if it were new, and
+ * every question in that history would be answered and paid for again on every
+ * restart. Railway redeploys on each push, so that is not a rare edge case: it
+ * is a bill. The `answered` set cannot help, because it lives in memory and a
+ * restart is exactly when it is empty.
+ */
+async function roomHead(room) {
+  const messages = parseMessages(
+    await chatGet(`/r/${room}?limit=1&format=json`),
+  );
+  return messages.reduce((max, m) => Math.max(max, Number(m.seq ?? 0)), 0);
 }
 
 // --- Paying for gas data ----------------------------------------------------
@@ -250,14 +271,20 @@ async function main() {
     `/kv/topic/${ROOM}/set/${encodeURIComponent("Ask for Base gas data. A bridge pays the x402 fee and answers signed. Free to ask.")}`,
   ).catch(() => {});
 
+  // Read the head before announcing, so the announcement itself is also past
+  // the cursor and the bridge never reacts to its own boot message.
+  let since = await roomHead(ROOM).catch((error) => {
+    console.error("[boot] could not read room head, starting from 0:", error.message);
+    return 0;
+  });
+  console.log(`resuming from seq ${since} (older messages are not re-answered)`);
+
   await saySigned(
     key,
     did,
     ROOM,
     `online. ask "gas now", "gas 180000" (any gas limit), or "compare gas". i pay the x402 fee and post the answer here. no cost to you.`,
   ).catch((error) => console.error("[hello] failed:", error.message));
-
-  let since = 0;
   let spentToday = 0;
   let dayStamp = new Date().toISOString().slice(0, 10);
   const recentAnswers = [];
