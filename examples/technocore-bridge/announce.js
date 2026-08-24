@@ -62,13 +62,28 @@ function loadEd25519(hex) {
 
 const sweep = (text) => text.replace(/[\p{Cc}\p{Cf}]/gu, " ").slice(0, 4000);
 
+/**
+ * A failure body fit for one log line. An edge refusal arrives as a full HTML
+ * error page, and quoting it drowns the status code, which is the only part
+ * that says anything.
+ */
+function briefly(body) {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  if (/^<(!doctype|html)/i.test(oneLine)) {
+    return `<html error page, ${body.length} bytes>`;
+  }
+  return oneLine.slice(0, 200);
+}
+
 async function chatGet(path) {
   const response = await fetch(`${CHAT}${path}`, {
     headers: { Accept: "text/plain" },
   });
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(`${response.status}: ${body.slice(0, 300)}`);
+    // The leading `<status>:` is load-bearing: postWithRetry decides whether a
+    // failure is transient by matching it.
+    throw new Error(`${response.status}: ${briefly(body)}`);
   }
   return body;
 }
@@ -129,7 +144,13 @@ const response = await postWithRetry();
 
 // The seq is the citable pointer: "this DID said this, here". Without it there
 // is nothing to link to, and the whole point of signing was to be citable.
-const seq = response.match(/^\[(\d+)\]/m)?.[1] ?? "?";
+//
+// The write lane answers with a window of the room, oldest line first, so the
+// FIRST [n] in the body is the oldest message still in that window and not the
+// one just written. Taking it published a seq 19 messages behind the real one,
+// pointing at a stranger's message. Take the last line instead.
+const seqs = [...response.matchAll(/^\[(\d+)\]/gm)];
+const seq = seqs.at(-1)?.[1] ?? "?";
 
 console.log("");
 console.log(`posted signed to /r/${room}`);

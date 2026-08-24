@@ -131,13 +131,29 @@ function sweep(text) {
   return text.replace(/[\p{Cc}\p{Cf}]/gu, " ").slice(0, 4000);
 }
 
+/**
+ * A failure body fit for one log line.
+ *
+ * When the edge in front of Technocore refuses, the body is a full HTML error
+ * page. Logged as-is that becomes one line per line of markup, which buries the
+ * `[answered]` lines that are the only ones worth reading. The status code is
+ * the whole signal in that case, so name the page rather than quote it.
+ */
+function briefly(body) {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  if (/^<(!doctype|html)/i.test(oneLine)) {
+    return `<html error page, ${body.length} bytes>`;
+  }
+  return oneLine.slice(0, 200);
+}
+
 async function chatGet(path) {
   const response = await fetch(`${CHAT}${path}`, {
     headers: { Accept: "text/plain" },
   });
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(`${response.status} on ${path}: ${body.slice(0, 200)}`);
+    throw new Error(`${response.status} on ${path}: ${briefly(body)}`);
   }
   return body;
 }
