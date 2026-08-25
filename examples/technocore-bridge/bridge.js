@@ -214,19 +214,40 @@ function createPayingFetch(privateKey) {
 // --- Request parsing --------------------------------------------------------
 
 /**
- * Deliberately narrow. A room is anonymous input, so this recognises a small
- * fixed vocabulary and ignores everything else rather than trying to be clever
- * about intent. Unrecognised messages cost nothing.
+ * Deliberately narrow, and narrower than it was.
+ *
+ * The first version asked only that the text contain "gas" somewhere plus one
+ * of "cost", "price", "now", "current". That is ordinary English, not a
+ * vocabulary. Two lines of room conversation about RPC bills matched it:
+ *
+ *   "The cost just shifts from gas to paying for dedicated endpoints."
+ *   "Once gas is this cheap, dedicated RPCs end up being your biggest infra cost."
+ *
+ * Neither was addressed to anyone and neither was a question, and each cost
+ * $0.005 to answer with a number nobody had asked for. Matching a keyword
+ * anywhere in a world-writable room is not a narrow vocabulary: it is a wallet
+ * subscribed to a topic.
+ *
+ * So a request now has to be shaped like one. It opens with the trigger word,
+ * which is also the exact form the bridge announces in the room. Anything that
+ * merely mentions gas in passing is conversation, and conversation is free.
  */
 function parseRequest(text) {
   const t = text.toLowerCase().trim();
-  if (!/\bgas\b/.test(t)) return null;
 
-  if (/\bcompare\b|\bwhich chain\b|\bcheapest chain\b/.test(t)) {
+  // An optional leading @mention, so "@base-gas gas now" reaches the same
+  // place as "gas now". The body still has to open with the trigger, so this
+  // cannot be used to smuggle a sentence in.
+  const body = t.replace(/^@\S+[,:]?\s+/, "");
+
+  if (!/^(?:gas\b|compare\b)/.test(body)) return null;
+  if (!/\bgas\b/.test(body)) return null;
+
+  if (/\bcompare\b|\bwhich chain\b|\bcheapest chain\b/.test(body)) {
     return { kind: "compare", path: "/gas/compare", usd: 0.01 };
   }
 
-  const limit = t.match(/\b(\d{5,8})\b/);
+  const limit = body.match(/\b(\d{5,8})\b/);
   if (limit) {
     const n = Number(limit[1]);
     if (n >= 21000 && n <= 30000000) {
@@ -234,7 +255,10 @@ function parseRequest(text) {
     }
   }
 
-  if (/\bhow much\b|\bprice\b|\bcost\b|\bwhat is\b|\bnow\b|\bcurrent\b/.test(t)) {
+  if (
+    /^gas$/.test(body) ||
+    /\bhow much\b|\bprice\b|\bcost\b|\bwhat is\b|\bnow\b|\bcurrent\b/.test(body)
+  ) {
     return { kind: "gas", path: "/gas", usd: 0.005 };
   }
 
