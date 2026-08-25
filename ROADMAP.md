@@ -52,7 +52,7 @@ Son satır hala işin özü. Ürün hazır, bulunabilir, tanıtımı var. Müşt
 
 **Faz 5 (kısmen): Güvenilirlik** — zincir başına yedekli RPC listesi, ödeme yükü boyutu için erken uyarı loglaması.
 
-**Güvenlik** — Alchemy API anahtarı `/gas` yanıtında sızıyordu, kapatıldı. *Anahtar hala rotate edilmedi.*
+**Güvenlik** — Alchemy API anahtarı `/gas` yanıtında sızıyordu, kapatıldı. Anahtar rotate **edilmedi ve edilmeyecek**: anahtar hiçbir zaman commit edilmedi (`git log -S` ile doğrulandı), sadece `/gas` yanıtlarında döndü ve o dönemde endpoint'i çağıran tek taraf proje sahibiydi. Yani maruz kalan üçüncü taraf yok. Bu ileride değişirse, yani dışarıdan ödeme yapan çağrılar geldikten sonra benzer bir sızıntı olursa, karar da değişir.
 
 ---
 
@@ -107,8 +107,8 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 ### Faz 5: Güvenilirlik ve hendek
 
-- [ ] **Geçmiş veriyi kalıcı hale getir (Upstash Redis, ücretsiz katman).** Artık öncelikli: veri bellekte ve her deploy sıfırlıyor, ama site "168 saat retention" tanıtıyor. En ayrıştırıcı özellik buna bağlı.
-- [ ] **Alchemy anahtarını rotate et.** Sızmıştı, kod düzeltildi ama anahtar değişmedi.
+- [x] **Geçmiş veriyi kalıcı hale getir (Upstash Redis).** Bitti. `/health` `durable: true` diyor ve restart sonrası örnekler geri yükleniyor: 2018 örnek, 167.9 saat kapsama.
+- [x] **Alchemy anahtarını rotate et.** Kapatıldı, rotate edilmeyecek. Gerekçe yukarıda, Güvenlik başlığında.
 - [ ] RPC yanıtlarını 2-5 saniye cache'le
 - [ ] Rate limiting
 - [ ] Uptime monitörü
