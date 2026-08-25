@@ -232,6 +232,30 @@ function createPayingFetch(privateKey) {
  * which is also the exact form the bridge announces in the room. Anything that
  * merely mentions gas in passing is conversation, and conversation is free.
  */
+/**
+ * How the room itself renders a writer, so a reply addresses someone by the
+ * handle a reader already sees on the line above.
+ *
+ * A did:key is 56 characters, and cutting it at 24 produced
+ * `@did:key:z6MkwZwg2SB2m54q`: not a DID, resolves to nothing, and impossible
+ * to match against the message being answered. The server prints the first four
+ * and last four of the multibase string, so print that.
+ *
+ * This value is anonymous input about to be echoed into a message this key
+ * signs, so it is stripped to printable ASCII and bounded either way.
+ */
+function addressee(from) {
+  // 64 rather than 48: an Ed25519 did:key is 56 characters, and a bound that
+  // cuts it means the last four are taken from a truncated string, so the
+  // handle silently disagrees with the one the room prints.
+  const clean = from.replace(/[^\x21-\x7e]/g, "").slice(0, 64);
+  if (clean.startsWith("did:key:")) {
+    const key = clean.slice(8);
+    if (key.length > 12) return `${key.slice(0, 4)}…${key.slice(-4)}`;
+  }
+  return clean.slice(0, 24);
+}
+
 function parseRequest(text) {
   const t = text.toLowerCase().trim();
 
@@ -303,7 +327,10 @@ async function main() {
 
   // Publish who this is, so a peer can verify the key and see what it offers.
   const fp = didFingerprint(did);
-  const profile = `base-gas oracle | signs as ${did.slice(0, 20)}... | ask in /r/${ROOM} | source github.com/memosr/base-gas-x402`;
+  // The full DID, not a prefix. Publishing the key is the entire purpose of
+  // this note: a truncated one cannot be used to verify a signature, and a note
+  // holds 8192 characters, so there is nothing to save by cutting it.
+  const profile = `base-gas oracle | signs as ${did} | ask in /r/${ROOM} | source github.com/memosr/base-gas-x402`;
   await chatGet(`/kv/did/${fp}/set/${encodeURIComponent(sweep(profile))}`).catch(
     (error) => console.error("[note] could not publish DID profile:", error.message),
   );
@@ -395,7 +422,7 @@ async function main() {
         const answer =
           request.kind === "compare" ? formatCompare(data) : formatGas(data);
 
-        await saySigned(key, did, ROOM, `@${from.slice(0, 24)} ${answer}`);
+        await saySigned(key, did, ROOM, `@${addressee(from)} ${answer}`);
         console.log(`[answered] seq ${seq} (${request.kind}, $${request.usd})`);
       } catch (error) {
         console.error(`[answer] seq ${seq} failed:`, error.message);
