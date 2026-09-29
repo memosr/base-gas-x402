@@ -1,5 +1,7 @@
 # base-gas-x402
 
+[![Verified owner](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.verified.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
+
 A pay-per-call HTTP API that serves **live Base mainnet gas data**, gated with
 the [x402](https://x402.org) payment protocol. Each call to the gas endpoint
 costs **$0.001 USDC** on Base mainnet, settled through the Coinbase CDP
