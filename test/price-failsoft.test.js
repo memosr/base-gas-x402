@@ -13,3 +13,10 @@ test("getEthUsd returns null instead of throwing when the RPC is down", async ()
   assert.equal(price, null);
   assert.ok(Date.now() - started < 10_000, "must fail fast");
 });
+
+test("after a failure, the next call skips the feed and answers at once", async () => {
+  const { getEthUsd } = await import("../src/price.js");
+  const started = Date.now();
+  assert.equal(await getEthUsd(), null);
+  assert.ok(Date.now() - started < 50, "backoff should answer without an RPC round trip");
+});

@@ -62,6 +62,7 @@ before(async () => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   process.env.BASE_MAINNET_RPC_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.RPC_CACHE_MS = "2000";
+  process.env.PRICE_BACKOFF_MS = "0";
   gas = await import("../src/gas.js");
 });
 after(() => server.close());

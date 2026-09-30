@@ -57,7 +57,7 @@ const client = createPublicClient({
   chain: base,
   transport: http(process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org", {
     timeout: PRICE_RPC_TIMEOUT_MS,
-    retryCount: 1,
+    retryCount: 0,
   }),
 });
 
@@ -93,6 +93,12 @@ export function parseRound([, answer, , updatedAt], decimals, nowSeconds) {
 
 let lastLoggedError = null;
 
+// After a failed read, skip the feed for this long and answer null at once, so
+// an outage costs one slow request per window rather than a delay on every call.
+// PRICE_BACKOFF_MS exists for tests; production uses the default.
+const FAILURE_BACKOFF_MS = Number(process.env.PRICE_BACKOFF_MS ?? 30_000);
+let skipUntil = 0;
+
 const loadPrice = cached(async () => {
   const [round, decimals] = await Promise.all([
     client.readContract({
@@ -115,11 +121,14 @@ const loadPrice = cached(async () => {
  * @returns {Promise<{ usd: number, updatedAt: string } | null>}
  */
 export async function getEthUsd() {
+  if (Date.now() < skipUntil) return null;
+
   try {
     const price = await loadPrice();
     lastLoggedError = null;
     return price;
   } catch (error) {
+    skipUntil = Date.now() + FAILURE_BACKOFF_MS;
     const message = error?.shortMessage || error?.message || String(error);
     // Log a failure once, not on every request, until it recovers.
     if (message !== lastLoggedError) {
