@@ -8,6 +8,20 @@ USDC** on Base mainnet, settled through the Coinbase CDP production
 facilitator. No API keys, accounts, or subscriptions for callers, just an
 on-chain micropayment per request.
 
+## What's new (September 2026)
+
+- **Costs in dollars.** `/gas` and `/gas/compare` now return `usd` next to gwei
+  and ETH, priced from the Chainlink ETH/USD feed on Base. If the feed is
+  unavailable the field is `null` and the rest of the response is unchanged.
+- **Hours to avoid.** `/gas/cheapest-window` now returns `avoidHoursUtc`, the
+  saving versus the average hour (`savingsVsAveragePercent`) and both savings in
+  USD (`savingsUsd`). Seven days of data show a real daily cycle on Base, driven
+  mostly by one or two spiky hours, so the honest everyday saving is small and
+  the answer says so.
+- **Faster, lighter reads.** Callers within the same 2-second Base block share
+  one RPC read.
+- **`/gas/history` is $0.01.**
+
 ## How it works
 
 | Route | Price | What it returns |
