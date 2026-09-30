@@ -1,6 +1,6 @@
 # base-gas-x402 Yol Haritası
 
-**Son güncelleme:** 27 Temmuz 2026
+**Son güncelleme:** 30 Eylül 2026
 **Hedef:** Bulunabilir ve satılabilir bir servisten, düzenli gelir üreten bir servise geçmek.
 
 ---
@@ -18,7 +18,7 @@
 | Web sitesi | Yok | Yayında |
 | **Üçüncü taraf işlem** | **0** | **0** |
 
-Son satır hala işin özü. Ürün hazır, bulunabilir, tanıtımı var. Müşteri yok.
+Bu tablo 27 Temmuz'daki durumdur. **30 Eylül güncellemesi:** Agent Economy Report'a göre 28 organik ajan ödeme yapıyor, 14 günde ~$6.9 settle edildi, rating BBB (pozitif). Güncel metrikler en altta.
 
 **Yayındaki varlıklar**
 
@@ -34,7 +34,7 @@ Son satır hala işin özü. Ürün hazır, bulunabilir, tanıtımı var. Müşt
 |---|---|
 | `GET /gas` | $0.005 |
 | `GET /gas/compare` | $0.01 |
-| `GET /gas/history` | $0.012 |
+| `GET /gas/history` | $0.01 |
 | `GET /gas/cheapest-window` | $0.02 |
 | `GET /health` | ücretsiz |
 
@@ -109,9 +109,11 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 - [x] **Geçmiş veriyi kalıcı hale getir (Upstash Redis).** Bitti. `/health` `durable: true` diyor ve restart sonrası örnekler geri yükleniyor: 2018 örnek, 167.9 saat kapsama.
 - [x] **Alchemy anahtarını rotate et.** Kapatıldı, rotate edilmeyecek. Gerekçe yukarıda, Güvenlik başlığında.
-- [ ] RPC yanıtlarını 2-5 saniye cache'le
+- [x] RPC yanıtlarını 2 saniye cache'le (30 Eylül)
 - [ ] Rate limiting
-- [ ] Uptime monitörü
+- [ ] Uptime monitörü (UptimeRobot, `/health`)
+- [x] Railway Watch Paths: doküman commit'leri artık deploy tetiklemiyor (30 Eylül)
+- [x] Railway Healthcheck `/health`: deploy sırasında kesinti yok (30 Eylül)
 
 ### Sitede düzeltilecekler
 
@@ -125,18 +127,20 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 - **`/gas/cheapest-window` bu haliyle satılabilir mi?** Base düz olduğu için sürekli "yapacak bir şey yok" diyor. Dürüst ama $0.02'lik bir cevap için ince. Fiyat düşürülmeli veya endpoint anomali tespitine (`gas-anomaly`) çevrilmeli.
 - **`/gas/history` fiyatı $0.012, rakipte $0.001 var.** Zengin çıktı bunu haklı çıkarıyor mu, yoksa fiyat kırılmalı mı?
-- **`HISTORY_PRICE_USD=0.012` env değişkeni** dünkü bir testten kaldı. Bilinçli bir fiyat değil, temizlenmeli.
+- ~~**`HISTORY_PRICE_USD=0.012` env değişkeni**~~ Railway'den silindi (30 Eylül), fiyat $0.01.
 
 ---
 
 ## Takip metrikleri
 
-| Metrik | 25 Tem | 27 Tem | 30 gün hedefi |
-|---|---|---|---|
-| Üçüncü taraf işlem | 0 | 0 | 100 |
-| Benzersiz cüzdan | 0 | 0 | 10 |
-| Endpoint | 1 | 5 | 5 |
-| Arama sırası (`cheapest-window`) | yok | **1.** | ilk 3'te kal |
-| Dağıtım kanalı | 0 | 4 | 6 |
+| Metrik | 25 Tem | 27 Tem | 30 Eyl | Hedef |
+|---|---|---|---|---|
+| Üçüncü taraf işlem | 0 | 0 | var | 100 |
+| Organik ödeyen ajan (Agent Economy Report) | 0 | 0 | **28** | 50 |
+| Settle edilen (14 gün) | $0 | $0 | **$6.9** | $25 |
+| Trust rating | yok | yok | **BBB, pozitif** | A |
+| Endpoint | 1 | 5 | 5 | 5 |
+| Arama sırası (`cheapest-window`) | yok | **1.** | ? | ilk 3 |
+| Dağıtım kanalı | 0 | 4 | 4 | 6 |
 
-Sıralama kazanıldı. Sıradaki tek metrik kullanım.
+Temmuz'daki hedef "ilk kullanıcı" idi, Eylül'de 28 organik ajan var. Sıradaki hedef rating'i A'ya taşımak: daha fazla organik ödeyen ve uptime'ı korumak.

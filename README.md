@@ -3,19 +3,25 @@
 [![Verified owner](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.verified.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app) [![Agent Economy Report rating](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
 
 A pay-per-call HTTP API that serves **live Base mainnet gas data**, gated with
-the [x402](https://x402.org) payment protocol. Each call to the gas endpoint
-costs **$0.001 USDC** on Base mainnet, settled through the Coinbase CDP
-production facilitator — no API keys, accounts, or subscriptions for callers,
-just an on-chain micropayment per request.
+the [x402](https://x402.org) payment protocol. Calls cost **$0.005 to $0.02
+USDC** on Base mainnet, settled through the Coinbase CDP production
+facilitator. No API keys, accounts, or subscriptions for callers, just an
+on-chain micropayment per request.
 
 ## How it works
 
-The service exposes two routes:
+| Route | Price | What it returns |
+| --- | --- | --- |
+| `GET /gas` | $0.005 | Live Base gas: base fee, priority tiers, cost estimate for any `gasLimit` |
+| `GET /gas/compare` | $0.01 | Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum, cheapest first |
+| `GET /gas/history` | $0.01 | Gas time series, min/max/avg/median and a cheap/normal/expensive/flat verdict |
+| `GET /gas/cheapest-window` | $0.02 | Hour-of-day averages in UTC and whether timing saves anything |
+| `GET /health` | free | Status and how much gas history has been collected |
+| `GET /info` | free | All routes and prices as JSON |
+| `GET /openapi.json` | free | OpenAPI 3.1 discovery document |
 
-- **`GET /`** — Free service description. Returns the endpoint list and payment
-  metadata as JSON. No payment required.
-- **`GET /gas`** — Paid. Returns live Base mainnet gas data for **$0.001 USDC**
-  on Base mainnet (`eip155:8453`).
+All paid routes settle in USDC on Base mainnet (`eip155:8453`). Prices are set
+with environment variables (see `.env.example`).
 
 `GET /gas` follows the standard x402 flow:
 
@@ -40,8 +46,9 @@ A live instance is deployed at:
 **https://base-gas-x402-production.up.railway.app**
 
 ```bash
-# Free service description
-curl https://base-gas-x402-production.up.railway.app/
+# Free: routes, prices and history coverage
+curl https://base-gas-x402-production.up.railway.app/info
+curl https://base-gas-x402-production.up.railway.app/health
 
 # Paid gas endpoint (returns HTTP 402 without payment)
 curl -i https://base-gas-x402-production.up.railway.app/gas
@@ -75,7 +82,7 @@ Decoding the `payment-required` header reveals the accepted payment terms:
     {
       "scheme": "exact",
       "network": "eip155:8453",
-      "amount": "1000",
+      "amount": "5000",
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "payTo": "0x0D083590c048A243e24a75E3a7C968145DE25B44",
       "maxTimeoutSeconds": 300,
@@ -85,7 +92,7 @@ Decoding the `payment-required` header reveals the accepted payment terms:
 }
 ```
 
-`amount` is in atomic USDC units (USDC has 6 decimals), so `1000` = $0.001.
+`amount` is in atomic USDC units (USDC has 6 decimals), so `5000` = $0.005.
 
 ## Response: `GET /gas`
 
@@ -96,7 +103,7 @@ data read directly from the network (nothing is fabricated):
 {
   "chain": "base-mainnet",
   "chainId": 8453,
-  "rpcUrl": "https://mainnet.base.org",
+  "rpcSource": "mainnet.base.org",
   "blockNumber": "12345678",
   "units": { "fees": "gwei", "cost": "gwei + ETH" },
   "baseFeePerGas": "0.012",
@@ -122,13 +129,13 @@ data read directly from the network (nothing is fabricated):
 | --- | --- |
 | `chain` | Chain name (`base-mainnet`). |
 | `chainId` | EVM chain ID (`8453`). |
-| `rpcUrl` | RPC endpoint the data was read from. |
+| `rpcSource` | Hostname of the RPC the data was read from (never the full URL, which may carry a provider key). |
 | `blockNumber` | Latest block number used for the reading. |
-| `units` | Unit hints — fees are in **gwei**; cost is in gwei and ETH. |
+| `units` | Unit hints: fees are in **gwei**, cost is in gwei and ETH. |
 | `baseFeePerGas` | Current block base fee, in gwei. |
 | `priorityFeePerGas.low` / `.medium` / `.high` | Priority fee tiers in gwei, derived from the 25th / 50th / 90th reward percentiles averaged over the last 10 blocks. |
 | `gasPrice` | Network gas price (`eth_gasPrice`), in gwei. |
-| `estimatedTransferCost.gasLimit` | Gas units for a plain ETH transfer (`21000`). |
+| `estimatedTransferCost.gasLimit` | Gas units priced (default `21000`, a plain ETH transfer; set with `?gasLimit=`). |
 | `estimatedTransferCost.basis` | How the estimate is computed (`baseFee + medium priority fee`). |
 | `estimatedTransferCost.gwei` | Estimated transfer cost in gwei. |
 | `estimatedTransferCost.eth` | Estimated transfer cost in ETH. |
@@ -154,7 +161,7 @@ It performs the full payment flow:
 
 > [!WARNING]
 > The buyer requires `BUYER_PRIVATE_KEY` — a **funded Base mainnet private key
-> holding USDC**. **Every run spends a real $0.001 USDC on-chain.** The key is
+> holding USDC**. **Every run spends a real $0.005 USDC on-chain.** The key is
 > read only from the environment and is never logged or printed; only the
 > derived public address is shown. Never commit a real key.
 
