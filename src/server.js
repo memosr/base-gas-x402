@@ -460,7 +460,7 @@ const OPENAPI_DOCUMENT = {
         summary:
           "Live Base mainnet gas price: base fee, priority fee tiers, and transfer cost estimate (paid via x402)",
         description:
-          `Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost for any gas limit. Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, price a Uniswap swap or NFT mint on Base, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs ${GAS_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.`,
+          `Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost for any gas limit in gwei, ETH and US dollars (ETH/USD from the Chainlink feed on Base). Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, price a Uniswap swap or NFT mint on Base, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs ${GAS_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.`,
         operationId: "getGas",
         parameters: [
           {
@@ -514,11 +514,27 @@ const OPENAPI_DOCUMENT = {
                     },
                     estimatedTransferCost: {
                       type: "object",
-                      description: "Estimated cost of a plain ETH transfer.",
+                      description: "Estimated cost for the requested gasLimit (default 21000, a plain ETH transfer).",
                       properties: {
                         gasLimit: { type: "integer", example: 21000 },
                         gwei: { type: "string", example: "294" },
                         eth: { type: "string", example: "0.000000294" },
+                        usd: {
+                          type: ["string", "null"],
+                          description:
+                            "Estimated cost in US dollars, 4 significant digits. Null if the ETH/USD price is unavailable.",
+                          example: "0.0007791",
+                        },
+                      },
+                    },
+                    ethUsd: {
+                      type: ["object", "null"],
+                      description:
+                        "ETH/USD price used for the usd figures, read on-chain from the Chainlink ETH/USD feed on Base. Null when the feed cannot be read or is stale, in which case every usd field is null too.",
+                      properties: {
+                        price: { type: "string", example: "2650.12" },
+                        source: { type: "string", example: "chainlink-eth-usd-base" },
+                        updatedAt: { type: "string", format: "date-time" },
                       },
                     },
                     fetchedAt: {
@@ -540,7 +556,7 @@ const OPENAPI_DOCUMENT = {
         summary:
           "Compare live gas costs across Base, OP Mainnet, Arbitrum, and Ethereum (paid via x402)",
         description:
-          `Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+          `Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit in ETH and US dollars, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
         operationId: "compareGas",
         parameters: [
           {
@@ -600,6 +616,12 @@ const OPENAPI_DOCUMENT = {
                                 type: "string",
                                 example: "0.000000126",
                               },
+                              usd: {
+                                type: ["string", "null"],
+                                description:
+                                  "Estimated cost in US dollars. All four chains pay gas in ETH, so one ETH/USD price covers them. Null if the price is unavailable.",
+                                example: "0.0003339",
+                              },
                             },
                           },
                         },
@@ -618,6 +640,16 @@ const OPENAPI_DOCUMENT = {
                     baseVsEthereum: {
                       type: "string",
                       example: "Base is 240.5x cheaper than Ethereum",
+                    },
+                    ethUsd: {
+                      type: ["object", "null"],
+                      description:
+                        "ETH/USD price used for the usd figures, read on-chain from the Chainlink ETH/USD feed on Base. Null when the feed cannot be read or is stale, in which case every usd field is null too.",
+                      properties: {
+                        price: { type: "string", example: "2650.12" },
+                        source: { type: "string", example: "chainlink-eth-usd-base" },
+                        updatedAt: { type: "string", format: "date-time" },
+                      },
                     },
                     unavailable: {
                       type: "array",

@@ -1,6 +1,7 @@
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base } from "viem/chains";
 import { cached, RPC_CACHE_MS } from "./cache.js";
+import { getEthUsd, weiToUsd, ethUsdBlock } from "./price.js";
 
 // A plain ETH transfer always costs exactly this much gas. Used as the default
 // when the caller does not pass an explicit gasLimit.
@@ -82,7 +83,12 @@ const readChainState = cached(
 );
 
 export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
-  const [block, feeHistory, gasPrice] = await readChainState();
+  // getEthUsd never throws: without a price the USD fields are null and the
+  // rest of the response is unaffected.
+  const [[block, feeHistory, gasPrice], ethUsd] = await Promise.all([
+    readChainState(),
+    getEthUsd(),
+  ]);
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const reward = feeHistory.reward ?? [];
@@ -100,7 +106,7 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
     chainId: base.id,
     rpcSource: RPC_SOURCE,
     blockNumber: block.number?.toString() ?? null,
-    units: { fees: "gwei", cost: "gwei + ETH" },
+    units: { fees: "gwei", cost: "gwei + ETH + USD" },
     baseFeePerGas: formatGwei(baseFeePerGas),
     priorityFeePerGas: {
       low: formatGwei(lowPriority),
@@ -113,7 +119,9 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
       basis: "baseFee + medium priority fee",
       gwei: formatGwei(transferCostWei),
       eth: formatEther(transferCostWei),
+      usd: weiToUsd(transferCostWei, ethUsd),
     },
+    ethUsd: ethUsdBlock(ethUsd),
     fetchedAt: new Date().toISOString(),
   };
 }

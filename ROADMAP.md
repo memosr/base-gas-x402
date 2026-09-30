@@ -110,6 +110,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 - [x] **Geçmiş veriyi kalıcı hale getir (Upstash Redis).** Bitti. `/health` `durable: true` diyor ve restart sonrası örnekler geri yükleniyor: 2018 örnek, 167.9 saat kapsama.
 - [x] **Alchemy anahtarını rotate et.** Kapatıldı, rotate edilmeyecek. Gerekçe yukarıda, Güvenlik başlığında.
 - [x] RPC yanıtlarını 2 saniye cache'le (30 Eylül)
+- [x] Maliyet tahminlerine USD eklendi, `/gas` ve `/gas/compare` (Chainlink ETH/USD, Base). Fiyat okunamazsa `usd: null`, geri kalan yanıt etkilenmez (30 Eylül)
 - [ ] Rate limiting
 - [ ] Uptime monitörü (UptimeRobot, `/health`)
 - [x] Railway Watch Paths: doküman commit'leri artık deploy tetiklemiyor (30 Eylül)

@@ -105,7 +105,7 @@ data read directly from the network (nothing is fabricated):
   "chainId": 8453,
   "rpcSource": "mainnet.base.org",
   "blockNumber": "12345678",
-  "units": { "fees": "gwei", "cost": "gwei + ETH" },
+  "units": { "fees": "gwei", "cost": "gwei + ETH + USD" },
   "baseFeePerGas": "0.012",
   "priorityFeePerGas": {
     "low": "0.001",
@@ -117,7 +117,13 @@ data read directly from the network (nothing is fabricated):
     "gasLimit": 21000,
     "basis": "baseFee + medium priority fee",
     "gwei": "294",
-    "eth": "0.000000294"
+    "eth": "0.000000294",
+    "usd": "0.0007791"
+  },
+  "ethUsd": {
+    "price": "2650.12",
+    "source": "chainlink-eth-usd-base",
+    "updatedAt": "2026-06-21T23:58:00.000Z"
   },
   "fetchedAt": "2026-06-22T00:00:00.000Z"
 }
@@ -131,7 +137,7 @@ data read directly from the network (nothing is fabricated):
 | `chainId` | EVM chain ID (`8453`). |
 | `rpcSource` | Hostname of the RPC the data was read from (never the full URL, which may carry a provider key). |
 | `blockNumber` | Latest block number used for the reading. |
-| `units` | Unit hints: fees are in **gwei**, cost is in gwei and ETH. |
+| `units` | Unit hints: fees are in **gwei**, cost is in gwei, ETH and USD. |
 | `baseFeePerGas` | Current block base fee, in gwei. |
 | `priorityFeePerGas.low` / `.medium` / `.high` | Priority fee tiers in gwei, derived from the 25th / 50th / 90th reward percentiles averaged over the last 10 blocks. |
 | `gasPrice` | Network gas price (`eth_gasPrice`), in gwei. |
@@ -139,6 +145,8 @@ data read directly from the network (nothing is fabricated):
 | `estimatedTransferCost.basis` | How the estimate is computed (`baseFee + medium priority fee`). |
 | `estimatedTransferCost.gwei` | Estimated transfer cost in gwei. |
 | `estimatedTransferCost.eth` | Estimated transfer cost in ETH. |
+| `estimatedTransferCost.usd` | Estimated cost in US dollars (4 significant digits). `null` if the price feed is unavailable. |
+| `ethUsd` | ETH/USD price behind the USD figure, read on-chain from the Chainlink ETH/USD feed on Base. `null` if unavailable or stale (older than 2 hours). |
 | `fetchedAt` | ISO-8601 timestamp of the reading. |
 
 ## Buyer example

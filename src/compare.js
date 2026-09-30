@@ -1,6 +1,7 @@
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base, mainnet, optimism, arbitrum } from "viem/chains";
 import { cached, RPC_CACHE_MS } from "./cache.js";
+import { getEthUsd, weiToUsd, ethUsdBlock } from "./price.js";
 
 /**
  * Multi-chain gas comparison.
@@ -102,8 +103,12 @@ const chainStateReaders = new Map(
   ]),
 );
 
-async function readChain(entry, gasLimit) {
-  const [block, gasPrice] = await chainStateReaders.get(entry.key)();
+async function readChain(entry, gasLimit, ethUsdPromise) {
+  // The price read runs in parallel with the chain reads, not before them.
+  const [[block, gasPrice], ethUsd] = await Promise.all([
+    chainStateReaders.get(entry.key)(),
+    ethUsdPromise,
+  ]);
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const costWei = gasPrice * gasLimit;
@@ -119,6 +124,8 @@ async function readChain(entry, gasLimit) {
       gasLimit: Number(gasLimit),
       gwei: formatGwei(costWei),
       eth: formatEther(costWei),
+      // All four chains pay gas in ETH, so one ETH/USD price covers them all.
+      usd: weiToUsd(costWei, ethUsd),
     },
   };
 }
@@ -134,9 +141,12 @@ async function readChain(entry, gasLimit) {
  * @param {bigint} [gasLimit] Gas units to price each chain against.
  */
 export async function getGasComparison(gasLimit = DEFAULT_GAS_LIMIT) {
+  // Started once and shared by every chain. getEthUsd never rejects.
+  const ethUsdPromise = getEthUsd();
   const settled = await Promise.allSettled(
-    CHAINS.map((entry) => readChain(entry, gasLimit)),
+    CHAINS.map((entry) => readChain(entry, gasLimit, ethUsdPromise)),
   );
+  const ethUsd = await ethUsdPromise;
 
   const chains = [];
   const unavailable = [];
@@ -179,6 +189,7 @@ export async function getGasComparison(gasLimit = DEFAULT_GAS_LIMIT) {
     baseRank: cheapest ? ranked.findIndex((c) => c.chain === "base") + 1 : null,
     baseVsEthereum,
     unavailable,
+    ethUsd: ethUsdBlock(ethUsd),
     fetchedAt: new Date().toISOString(),
   };
 }
