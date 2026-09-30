@@ -1,5 +1,6 @@
 import { getGasData } from "./gas.js";
 import * as store from "./store.js";
+import { weiToUsd } from "./price.js";
 
 /**
  * Gas history.
@@ -63,6 +64,15 @@ async function takeSample() {
     lastError = error instanceof Error ? error.message : String(error);
     console.error("[history] sample failed:", lastError);
   }
+}
+
+/**
+ * Replaces the in-memory buffer. Test-only: lets tests run the query functions
+ * against a known series without a live chain or Redis.
+ */
+export function __setSamplesForTests(next) {
+  samples.length = 0;
+  samples.push(...next);
 }
 
 /** Starts the background sampler. Safe to call once at boot. */
@@ -217,11 +227,29 @@ export function getHistory(hours) {
   };
 }
 
+// An hour is flagged to avoid when its average sits at least this far above
+// the typical (median) hour. Below that, the difference is noise.
+const AVOID_THRESHOLD_PERCENT = 5;
+
+// Gas units used to express the savings in dollars: a plain ETH transfer.
+const SAVINGS_EXAMPLE_GAS_LIMIT = 21000;
+
+/** Converts a gwei-per-gas difference into a USD string for `gasLimit` gas. */
+function gweiDiffToUsd(gweiPerGas, gasLimit, ethUsd) {
+  if (!(gweiPerGas > 0)) return weiToUsd(0n, ethUsd);
+  const wei = BigInt(Math.round(gweiPerGas * 1e9 * gasLimit));
+  return weiToUsd(wei, ethUsd);
+}
+
 /**
  * Average gas price bucketed by hour of day (UTC), so agents can schedule work
  * for the hours that are historically cheapest.
+ *
+ * @param {number} hours Lookback window.
+ * @param {{ usd: number } | null} [ethUsd] ETH/USD price for the dollar
+ *   figures; without it savingsUsd is null and everything else is unchanged.
  */
-export function getCheapestWindow(hours) {
+export function getCheapestWindow(hours, ethUsd = null) {
   const window = windowSamples(hours);
 
   /** @type {Map<number, number[]>} */
@@ -255,6 +283,24 @@ export function getCheapestWindow(hours) {
     );
   }
 
+  // savingsPercent compares the best hour with the worst one. On Base a single
+  // spiky hour can dominate that figure while the other hours sit on the same
+  // floor, so it overstates what a caller transacting at a random time would
+  // save. Comparing with the average hour is the honest everyday number.
+  let savingsVsAveragePercent = null;
+  let typicalHourAvg = null;
+  let averageHourAvg = null;
+  if (cheapest && hourly.length > 0) {
+    averageHourAvg =
+      hourly.reduce((sum, h) => sum + h.avgGasPrice, 0) / hourly.length;
+    typicalHourAvg = hourly[Math.floor(hourly.length / 2)].avgGasPrice;
+    if (averageHourAvg > 0) {
+      savingsVsAveragePercent = Number(
+        (((averageHourAvg - cheapest.avgGasPrice) / averageHourAvg) * 100).toFixed(2),
+      );
+    }
+  }
+
   // Ranking hours by average price implies the hours differ. On a chain that
   // sits at its fee floor they do not, and returning a confident "cheapest hour"
   // would be selling a decision that cannot be made. Say so instead.
@@ -273,6 +319,39 @@ export function getCheapestWindow(hours) {
     ? Number((priciest.samples / samplesPerHour).toFixed(1))
     : 0;
 
+  // The actionable half of a daily cycle: which hours to stay away from, worst
+  // first. Measured against the median hour so one spike cannot move the bar.
+  const avoidHoursUtc =
+    hasDailyCycle && typicalHourAvg > 0
+      ? hourly
+          .filter(
+            (h) =>
+              ((h.avgGasPrice - typicalHourAvg) / typicalHourAvg) * 100 >=
+              AVOID_THRESHOLD_PERCENT,
+          )
+          .sort((a, b) => b.avgGasPrice - a.avgGasPrice)
+          .map((h) => h.hourUtc)
+      : [];
+
+  // The same savings in dollars for one plain transfer, so a caller can see
+  // whether timing is worth anything at their scale.
+  const savingsUsd =
+    ethUsd && cheapest && priciest && averageHourAvg !== null
+      ? {
+          gasLimit: SAVINGS_EXAMPLE_GAS_LIMIT,
+          vsPriciestHour: gweiDiffToUsd(
+            priciest.avgGasPrice - cheapest.avgGasPrice,
+            SAVINGS_EXAMPLE_GAS_LIMIT,
+            ethUsd,
+          ),
+          vsAverageHour: gweiDiffToUsd(
+            averageHourAvg - cheapest.avgGasPrice,
+            SAVINGS_EXAMPLE_GAS_LIMIT,
+            ethUsd,
+          ),
+        }
+      : null;
+
   const CONFIDENT_DAYS = 3;
   const confidence =
     daysObserved >= CONFIDENT_DAYS
@@ -285,7 +364,12 @@ export function getCheapestWindow(hours) {
   if (hourly.length === 0) {
     recommendation = "No history collected yet. Check GET /health for coverage.";
   } else if (hasDailyCycle) {
-    const base = `Transact around ${String(cheapest.hourUtc).padStart(2, "0")}:00 UTC to save about ${savingsPercent}% versus the priciest hour (${String(priciest.hourUtc).padStart(2, "0")}:00 UTC).`;
+    const hh = (h) => `${String(h).padStart(2, "0")}:00`;
+    const avoid =
+      avoidHoursUtc.length > 0
+        ? `Avoid ${avoidHoursUtc.map(hh).join(" and ")} UTC, where gas runs at least ${AVOID_THRESHOLD_PERCENT}% above a typical hour. `
+        : "";
+    const base = `${avoid}The cheapest hour is ${hh(cheapest.hourUtc)} UTC: about ${savingsVsAveragePercent}% cheaper than the average hour and ${savingsPercent}% cheaper than the priciest (${hh(priciest.hourUtc)} UTC).`;
     const caveat =
       confidence === "pattern"
         ? ` This holds across ${daysObserved} days of observation.`
@@ -307,6 +391,14 @@ export function getCheapestWindow(hours) {
     hasDailyCycle,
     recommendation,
     savingsPercent,
+    // Cheapest hour versus the average hour: what timing saves a caller who
+    // would otherwise transact at an arbitrary time.
+    savingsVsAveragePercent,
+    // Hours to stay away from, worst first. Empty when there is no daily cycle.
+    avoidHoursUtc,
+    // Dollar value of those savings for one plain transfer. Null without an
+    // ETH/USD price.
+    savingsUsd,
     // Qualifiers on savingsPercent. One day of data can produce a large number
     // from a single spike; these say how much weight it deserves.
     daysObserved,

@@ -126,7 +126,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 ### Açık ürün soruları
 
-- **`/gas/cheapest-window` bu haliyle satılabilir mi?** Base düz olduğu için sürekli "yapacak bir şey yok" diyor. Dürüst ama $0.02'lik bir cevap için ince. Fiyat düşürülmeli veya endpoint anomali tespitine (`gas-anomaly`) çevrilmeli.
+- ~~**`/gas/cheapest-window` bu haliyle satılabilir mi?**~~ 30 Eylül ölçümü: 7 günde gerçek bir döngü var (`confidence: pattern`), ama %15.3'ün çoğu tek saatten (08:00 UTC) geliyor. Fiyat $0.02'de kaldı; yanıta `avoidHoursUtc`, `savingsVsAveragePercent` (ortalamaya göre ~%1) ve `savingsUsd` eklendi.
 - **`/gas/history` fiyatı $0.012, rakipte $0.001 var.** Zengin çıktı bunu haklı çıkarıyor mu, yoksa fiyat kırılmalı mı?
 - ~~**`HISTORY_PRICE_USD=0.012` env değişkeni**~~ Railway'den silindi (30 Eylül), fiyat $0.01.
 

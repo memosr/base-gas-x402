@@ -18,6 +18,7 @@ import {
   getHistory,
   getCheapestWindow,
 } from "./history.js";
+import { getEthUsd } from "./price.js";
 
 // Common gas limits, surfaced in the discovery docs so agents know what to pass.
 const GAS_LIMIT_PRESETS = {
@@ -847,6 +848,29 @@ const OPENAPI_DOCUMENT = {
                         },
                       },
                     },
+                    savingsVsAveragePercent: {
+                      type: ["number", "null"],
+                      description:
+                        "Percent saved by transacting in the cheapest hour instead of the average hour. The everyday figure: savingsPercent compares with the single worst hour and can be dominated by one spike.",
+                      example: 1.02,
+                    },
+                    avoidHoursUtc: {
+                      type: "array",
+                      items: { type: "integer" },
+                      description:
+                        "Hours of day (UTC) whose average gas is at least 5% above the median hour, worst first. Empty when there is no daily cycle.",
+                      example: [8, 14],
+                    },
+                    savingsUsd: {
+                      type: ["object", "null"],
+                      description:
+                        "The savings in US dollars for one plain transfer (21000 gas), using the Chainlink ETH/USD feed on Base. Null if the price is unavailable.",
+                      properties: {
+                        gasLimit: { type: "integer", example: 21000 },
+                        vsPriciestHour: { type: "string", example: "0.00006236" },
+                        vsAverageHour: { type: "string", example: "0.000003488" },
+                      },
+                    },
                     cheapestHourUtc: { type: "integer", example: 6 },
                     priciestHourUtc: { type: "integer", example: 14 },
                     savingsPercent: {
@@ -1225,12 +1249,13 @@ app.get("/gas/history", (req, res) => {
   }
 });
 
-app.get("/gas/cheapest-window", (req, res) => {
+app.get("/gas/cheapest-window", async (req, res) => {
   const { hours, error: invalid } = parseHours(req.query.hours, 168);
   if (invalid) return res.status(400).json(invalid);
 
   try {
-    res.json(getCheapestWindow(hours));
+    // getEthUsd never throws; without a price only savingsUsd is null.
+    res.json(getCheapestWindow(hours, await getEthUsd()));
   } catch (error) {
     console.error("[/gas/cheapest-window] failed:", error);
     res.status(502).json({
