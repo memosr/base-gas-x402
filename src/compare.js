@@ -1,5 +1,6 @@
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base, mainnet, optimism, arbitrum } from "viem/chains";
+import { cached, RPC_CACHE_MS } from "./cache.js";
 
 /**
  * Multi-chain gas comparison.
@@ -71,28 +72,38 @@ const clients = new Map(
 
 const DEFAULT_GAS_LIMIT = 21000n;
 
-async function readChain(entry, gasLimit) {
+/**
+ * Reads one chain's latest block and gas price, trying each RPC in order; the
+ * first one that answers wins. Independent of gasLimit, so it is cached per
+ * chain (see cache.js) and shared by every caller within the TTL.
+ */
+async function loadChainState(entry) {
   const candidates = clients.get(entry.key);
-
-  let block;
-  let gasPrice;
   let lastError;
 
-  // Try each RPC in order; the first one that answers wins.
   for (const client of candidates) {
     try {
-      [block, gasPrice] = await Promise.all([
+      return await Promise.all([
         client.getBlock({ blockTag: "latest" }),
         client.getGasPrice(),
       ]);
-      lastError = undefined;
-      break;
     } catch (error) {
       lastError = error;
     }
   }
 
-  if (lastError) throw lastError;
+  throw lastError;
+}
+
+const chainStateReaders = new Map(
+  CHAINS.map((entry) => [
+    entry.key,
+    cached(() => loadChainState(entry), RPC_CACHE_MS),
+  ]),
+);
+
+async function readChain(entry, gasLimit) {
+  const [block, gasPrice] = await chainStateReaders.get(entry.key)();
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const costWei = gasPrice * gasLimit;

@@ -1,5 +1,6 @@
 import { createPublicClient, http, formatGwei, formatEther } from "viem";
 import { base } from "viem/chains";
+import { cached, RPC_CACHE_MS } from "./cache.js";
 
 // A plain ETH transfer always costs exactly this much gas. Used as the default
 // when the caller does not pass an explicit gasLimit.
@@ -62,15 +63,26 @@ function averageRewardColumn(reward, columnIndex) {
  *   Defaults to 21000 (a plain ETH transfer). Pass a larger value to estimate
  *   swaps, ERC-20 transfers, NFT mints, or contract deployments.
  */
+/**
+ * The three chain reads behind every /gas answer. They do not depend on
+ * gasLimit, so one cached read serves every caller within the same block,
+ * whatever gasLimit each of them asked for. See cache.js.
+ */
+const readChainState = cached(
+  () =>
+    Promise.all([
+      client.getBlock({ blockTag: "latest" }),
+      client.getFeeHistory({
+        blockCount: FEE_HISTORY_BLOCKS,
+        rewardPercentiles: REWARD_PERCENTILES,
+      }),
+      client.getGasPrice(),
+    ]),
+  RPC_CACHE_MS,
+);
+
 export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
-  const [block, feeHistory, gasPrice] = await Promise.all([
-    client.getBlock({ blockTag: "latest" }),
-    client.getFeeHistory({
-      blockCount: FEE_HISTORY_BLOCKS,
-      rewardPercentiles: REWARD_PERCENTILES,
-    }),
-    client.getGasPrice(),
-  ]);
+  const [block, feeHistory, gasPrice] = await readChainState();
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const reward = feeHistory.reward ?? [];

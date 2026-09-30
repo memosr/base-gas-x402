@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "buyer": "node src/buyer.js"
+    "buyer": "node src/buyer.js",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "x402",
