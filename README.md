@@ -1,6 +1,6 @@
 # base-gas-x402
 
-[![Verified owner](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.verified.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
+[![Verified owner](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.verified.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app) [![Agent Economy Report rating](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
 
 A pay-per-call HTTP API that serves **live Base mainnet gas data**, gated with
 the [x402](https://x402.org) payment protocol. Each call to the gas endpoint
