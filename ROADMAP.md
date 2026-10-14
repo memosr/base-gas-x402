@@ -32,7 +32,7 @@ Bu tablo 27 Temmuz'daki durumdur. **30 Eylül güncellemesi:** Agent Economy Rep
 
 | Endpoint | Fiyat |
 |---|---|
-| `GET /gas` | $0.005 |
+| `GET /gas` | $0.002 |
 | `GET /gas/compare` | $0.01 |
 | `GET /gas/history` | $0.01 |
 | `GET /gas/cheapest-window` | $0.02 |
@@ -126,6 +126,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 ### Açık ürün soruları
 
+- **14 Ekim:** Rating BB'ye düştü (son 7 günde 0 organik ajan). Ödeme akışı test edildi, çalışıyor. AgentCash aramasında "Base gas oracle" için `/gas` ilk 10'da çıkmıyordu; 1. sıradaki Otto aynı veriyi $0.001'e satıyor. Arama metni USD ve farklılaştırıcı route'larla yenilendi, `/gas` $0.005'ten $0.002'ye indirildi (deneme, 2 hafta sonra değerlendirilecek).
 - ~~**`/gas/cheapest-window` bu haliyle satılabilir mi?**~~ 30 Eylül ölçümü: 7 günde gerçek bir döngü var (`confidence: pattern`), ama %15.3'ün çoğu tek saatten (08:00 UTC) geliyor. Fiyat $0.02'de kaldı; yanıta `avoidHoursUtc`, `savingsVsAveragePercent` (ortalamaya göre ~%1) ve `savingsUsd` eklendi.
 - **`/gas/history` fiyatı $0.012, rakipte $0.001 var.** Zengin çıktı bunu haklı çıkarıyor mu, yoksa fiyat kırılmalı mı?
 - ~~**`HISTORY_PRICE_USD=0.012` env değişkeni**~~ Railway'den silindi (30 Eylül), fiyat $0.01.

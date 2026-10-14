@@ -3,7 +3,7 @@
 [![Verified owner](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.verified.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app) [![Agent Economy Report rating](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app.svg)](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
 
 A pay-per-call HTTP API that serves **live Base mainnet gas data**, gated with
-the [x402](https://x402.org) payment protocol. Calls cost **$0.005 to $0.02
+the [x402](https://x402.org) payment protocol. Calls cost **$0.002 to $0.02
 USDC** on Base mainnet, settled through the Coinbase CDP production
 facilitator. No API keys, accounts, or subscriptions for callers, just an
 on-chain micropayment per request.
@@ -26,7 +26,7 @@ on-chain micropayment per request.
 
 | Route | Price | What it returns |
 | --- | --- | --- |
-| `GET /gas` | $0.005 | Live Base gas: base fee, priority tiers, cost estimate for any `gasLimit` |
+| `GET /gas` | $0.002 | Live Base gas: base fee, priority tiers, cost estimate for any `gasLimit` |
 | `GET /gas/compare` | $0.01 | Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum, cheapest first |
 | `GET /gas/history` | $0.01 | Gas time series, min/max/avg/median and a cheap/normal/expensive/flat verdict |
 | `GET /gas/cheapest-window` | $0.02 | Hour-of-day averages in UTC and whether timing saves anything |
@@ -96,7 +96,7 @@ Decoding the `payment-required` header reveals the accepted payment terms:
     {
       "scheme": "exact",
       "network": "eip155:8453",
-      "amount": "5000",
+      "amount": "2000",
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "payTo": "0x0D083590c048A243e24a75E3a7C968145DE25B44",
       "maxTimeoutSeconds": 300,
@@ -106,7 +106,7 @@ Decoding the `payment-required` header reveals the accepted payment terms:
 }
 ```
 
-`amount` is in atomic USDC units (USDC has 6 decimals), so `5000` = $0.005.
+`amount` is in atomic USDC units (USDC has 6 decimals), so `2000` = $0.002.
 
 ## Response: `GET /gas`
 
@@ -183,7 +183,7 @@ It performs the full payment flow:
 
 > [!WARNING]
 > The buyer requires `BUYER_PRIVATE_KEY` — a **funded Base mainnet private key
-> holding USDC**. **Every run spends a real $0.005 USDC on-chain.** The key is
+> holding USDC**. **Every run spends a real $0.002 USDC on-chain.** The key is
 > read only from the environment and is never logged or printed; only the
 > derived public address is shown. Never commit a real key.
 
