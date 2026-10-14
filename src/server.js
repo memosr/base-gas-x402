@@ -220,7 +220,7 @@ const routes = {
     // Short on purpose: see the size note on /gas/history below. The
     // discovery-driving copy lives in the OpenAPI document instead.
     description:
-      "Live Base mainnet gas: EIP-1559 base fee, low/medium/high priority tiers in gwei, and a transaction cost estimate for any gas limit.",
+      "Live Base mainnet gas oracle: EIP-1559 base fee, low/medium/high priority tiers in gwei, and the cost of any transaction in USD and ETH.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: ["gas", "gas price", "gas oracle", "base", "base-l2", "onchain-data"],
@@ -449,9 +449,9 @@ const OPENAPI_DOCUMENT = {
     title: "base-gas-x402",
     version: "1.0.0",
     description:
-      `Pay-per-call gas oracle for Base mainnet (Base L2, Coinbase Base, chain id 8453), gated with the x402 payment protocol. Returns EIP-1559 base fee, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost, all read live from the chain. No API keys and no subscription: agents pay ${GAS_PRICE_USD} USDC per call over x402.`,
+      `Base gas oracle for agents that budget in dollars. Live Base mainnet (chain id 8453) gas: EIP-1559 base fee, low/medium/high priority tiers, and what any transaction costs in USD, ETH and gwei (ETH/USD read on-chain from Chainlink). Also: live gas cost compared across Base, OP Mainnet, Arbitrum and Ethereum in one call; 7 days of Base gas history sampled every 5 minutes with a cheap/normal/expensive/flat verdict; and the hours of day to avoid. Paid per call over x402 in USDC, from $${GAS_PRICE_USD}. No API key, no signup. Free: GET /health.`,
     "x-guidance":
-      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost, budget agent gas spending, monitor Base L2 network congestion, or compare Base fees against other chains. Fees are returned in gwei. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
+      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost in US dollars, budget agent gas spending, or monitor Base L2 network congestion. Fees are returned in gwei; estimatedTransferCost also carries usd and eth. For "which chain is cheapest right now" call GET /gas/compare once instead of four chains separately. For "is gas high or low right now, should I wait" call GET /gas/history (verdict). For "when should I schedule this" call GET /gas/cheapest-window (avoidHoursUtc). Check the free GET /health first for history coverage. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
     contact: { email: "mehmet.sr35@gmail.com" },
   },
   servers: [{ url: "https://base-gas-x402-production.up.railway.app" }],
@@ -459,7 +459,7 @@ const OPENAPI_DOCUMENT = {
     "/gas": {
       get: {
         summary:
-          "Live Base mainnet gas price: base fee, priority fee tiers, and transfer cost estimate (paid via x402)",
+          "Live Base gas oracle: base fee, priority fee tiers, and transaction cost in USD (paid via x402)",
         description:
           `Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost for any gas limit in gwei, ETH and US dollars (ETH/USD from the Chainlink feed on Base). Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, price a Uniswap swap or NFT mint on Base, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs ${GAS_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.`,
         operationId: "getGas",
