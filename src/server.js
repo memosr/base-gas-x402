@@ -1184,7 +1184,6 @@ app.get("/gas", async (req, res) => {
     console.error("[/gas] failed to fetch gas data:", error);
     res.status(502).json({
       error: "Failed to fetch Base mainnet gas data",
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -1210,7 +1209,6 @@ app.get("/gas/compare", async (req, res) => {
     console.error("[/gas/compare] failed to compare gas:", error);
     res.status(502).json({
       error: "Failed to compare gas across chains",
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -1244,7 +1242,6 @@ app.get("/gas/history", (req, res) => {
     console.error("[/gas/history] failed:", error);
     res.status(502).json({
       error: "Failed to build gas history",
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -1260,7 +1257,6 @@ app.get("/gas/cheapest-window", async (req, res) => {
     console.error("[/gas/cheapest-window] failed:", error);
     res.status(502).json({
       error: "Failed to compute cheapest window",
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
