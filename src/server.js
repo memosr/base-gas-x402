@@ -45,8 +45,9 @@ const FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
 
 // Price per /gas call, in USD. Overridable via GAS_PRICE_USD so pricing can be
 // tuned from the host env without a code change. Comparable Base gas endpoints
-// on x402 sit between $0.01 and $0.10, so $0.005 still undercuts the market.
-const GAS_PRICE_USD = process.env.GAS_PRICE_USD || "0.005";
+// on x402 sit between $0.001 and $0.10. The default matches the live price, so
+// removing the env variable never silently changes what callers pay.
+const GAS_PRICE_USD = process.env.GAS_PRICE_USD || "0.002";
 
 if (!/^\d+(\.\d+)?$/.test(GAS_PRICE_USD) || Number(GAS_PRICE_USD) <= 0) {
   throw new Error(
@@ -80,7 +81,7 @@ for (const [name, value] of [
   }
 }
 
-// Display form ("$0.005") for the x402 accepts block and the landing page.
+// Display form ("$0.002") for the x402 accepts block and the landing page.
 const GAS_PRICE = `$${GAS_PRICE_USD}`;
 const COMPARE_PRICE = `$${COMPARE_PRICE_USD}`;
 const HISTORY_PRICE = `$${HISTORY_PRICE_USD}`;
