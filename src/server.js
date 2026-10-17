@@ -265,7 +265,7 @@ const routes = {
       payTo: PAY_TO_ADDRESS,
     },
     description:
-      "Live gas cost comparison across Base, OP Mainnet, Arbitrum One, and Ethereum in one call, ranked cheapest first.",
+      "Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum in one call, in USD and ETH, ranked cheapest first.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: [
@@ -313,7 +313,7 @@ const routes = {
     // that actually drives discovery lives in the OpenAPI document, which is
     // not part of the payment payload.
     description:
-      "Historical Base mainnet gas prices over a lookback window: time series, min/max/average/median, and a cheap/normal/expensive verdict for the current price.",
+      "Base gas history sampled every 5 minutes: time series, min/max/average/median, and whether gas is cheap, normal, expensive or flat right now.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: ["gas history", "gas trend", "base", "base-l2", "onchain-data"],
@@ -348,7 +348,7 @@ const routes = {
       payTo: PAY_TO_ADDRESS,
     },
     description:
-      "Cheapest hours of day to transact on Base, from collected gas history: hourly averages in UTC ranked cheapest first, plus the savings percent.",
+      "When to transact on Base, from 7 days of gas history: the hours to avoid, the cheapest hour in UTC, and the saving in percent and USD.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: [
