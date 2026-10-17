@@ -1,6 +1,7 @@
 import { getGasData } from "./gas.js";
 import * as store from "./store.js";
 import { weiToUsd } from "./price.js";
+import { intEnv } from "./config.js";
 
 /**
  * Gas history.
@@ -17,11 +18,17 @@ import { weiToUsd } from "./price.js";
  * module runs in memory only and `/health` reports which mode is active.
  */
 
-const SAMPLE_INTERVAL_MS = Number(
-  process.env.HISTORY_SAMPLE_INTERVAL_MS || 5 * 60 * 1000,
-);
+// Validated at boot: a bad value stops the service with a clear error
+// instead of a NaN that silently breaks sampling (see config.js).
+const SAMPLE_INTERVAL_MS = intEnv("HISTORY_SAMPLE_INTERVAL_MS", 5 * 60 * 1000, {
+  min: 10_000,
+  max: 3_600_000,
+});
 
-const RETENTION_HOURS = Number(process.env.HISTORY_RETENTION_HOURS || 168);
+export const RETENTION_HOURS = intEnv("HISTORY_RETENTION_HOURS", 168, {
+  min: 1,
+  max: 720,
+});
 
 // Ring buffer capacity derived from retention, plus a small margin.
 const MAX_SAMPLES = Math.ceil((RETENTION_HOURS * 3600_000) / SAMPLE_INTERVAL_MS) + 10;

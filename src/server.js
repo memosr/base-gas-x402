@@ -17,7 +17,9 @@ import {
   coverage,
   getHistory,
   getCheapestWindow,
+  RETENTION_HOURS,
 } from "./history.js";
+import { isAddress } from "viem";
 import { getEthUsd } from "./price.js";
 import { paidRateLimit, PAID_PER_MINUTE } from "./ratelimit.js";
 
@@ -91,17 +93,19 @@ const WINDOW_PRICE_AMOUNT = Number(WINDOW_PRICE_USD).toFixed(6);
 
 // Bounds for the shared `hours` lookback parameter.
 const MIN_HOURS = 1;
-const MAX_HOURS = Number(process.env.HISTORY_RETENTION_HOURS || 168);
+// Same validated value the sampler uses, so the two can never disagree.
+const MAX_HOURS = RETENTION_HOURS;
 
 // Base Builder Code attribution (ERC-8021 Schema 2 "a" / app code). Advertised
 // in the /gas 402 PAYMENT-REQUIRED extensions so settlement calldata can be
 // attributed to this service. Override via BUILDER_CODE env if needed.
 const BUILDER_CODE_VALUE = process.env.BUILDER_CODE || "bc_lhfd8zad";
 
-if (!PAY_TO_ADDRESS) {
-  // Fail fast: without a payTo address the facilitator can't settle payments.
-  console.warn(
-    "[warn] PAY_TO_ADDRESS is not set. /gas will reject payments until you set it in .env",
+if (!PAY_TO_ADDRESS || !isAddress(PAY_TO_ADDRESS, { strict: false })) {
+  // Fail fast: without a valid payTo address every payment would be rejected
+  // or, worse, settle to the wrong place. Refuse to start instead.
+  throw new Error(
+    `PAY_TO_ADDRESS must be a valid EVM address, got "${PAY_TO_ADDRESS ?? ""}". Set it in .env or the host's variables.`,
   );
 }
 
