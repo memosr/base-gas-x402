@@ -28,6 +28,7 @@ before(async () => {
         BASE_MAINNET_RPC_URL: "http://127.0.0.1:9",
         UPSTASH_REDIS_REST_URL: "",
         UPSTASH_REDIS_REST_TOKEN: "",
+        RATE_LIMIT_PAID_PER_MIN: "2",
       },
       stdio: "ignore",
     },
@@ -64,3 +65,23 @@ for (const route of ["/health", "/info", "/openapi.json"]) {
     assert.equal(res.status, 200);
   });
 }
+
+test("paid requests are rate limited per client before the paywall", async () => {
+  const fakePayment = Buffer.from(JSON.stringify({ x402Version: 2 })).toString("base64");
+  const send = () =>
+    fetch(`http://127.0.0.1:${PORT}/gas`, {
+      headers: { "payment-signature": fakePayment, "x-real-ip": "203.0.113.7" },
+    });
+  const statuses = [];
+  for (let i = 0; i < 3; i++) statuses.push((await send()).status);
+  assert.notEqual(statuses[0], 429);
+  assert.notEqual(statuses[1], 429);
+  assert.equal(statuses[2], 429);
+
+  // Another client is unaffected, and so is the free 402 challenge.
+  const other = await fetch(`http://127.0.0.1:${PORT}/gas`, {
+    headers: { "payment-signature": fakePayment, "x-real-ip": "203.0.113.8" },
+  });
+  assert.notEqual(other.status, 429);
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/gas`)).status, 402);
+});

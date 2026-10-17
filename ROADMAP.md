@@ -111,7 +111,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 - [x] **Alchemy anahtarını rotate et.** Kapatıldı, rotate edilmeyecek. Gerekçe yukarıda, Güvenlik başlığında.
 - [x] RPC yanıtlarını 2 saniye cache'le (30 Eylül)
 - [x] Maliyet tahminlerine USD eklendi, `/gas` ve `/gas/compare` (Chainlink ETH/USD, Base). Fiyat okunamazsa `usd: null`, geri kalan yanıt etkilenmez (30 Eylül)
-- [ ] Rate limiting
+- [x] Rate limiting: istemci başına dakikada 60 ücretli istek, X-Real-IP ile (17 Ekim)
 - [ ] Uptime monitörü (UptimeRobot, `/health`)
 - [x] Railway Watch Paths: doküman commit'leri artık deploy tetiklemiyor (30 Eylül)
 - [x] Railway Healthcheck `/health`: deploy sırasında kesinti yok (30 Eylül)

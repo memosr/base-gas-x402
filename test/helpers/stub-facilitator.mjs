@@ -14,5 +14,12 @@ globalThis.fetch = async (url, init) => {
       { headers: { "content-type": "application/json" } },
     );
   }
+  // Any payment the tests send is fake: report it invalid so it never settles.
+  if (u.includes("api.cdp.coinbase.com") && u.endsWith("/verify")) {
+    return new Response(
+      JSON.stringify({ isValid: false, invalidReason: "invalid_payload" }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
   return realFetch(url, init);
 };

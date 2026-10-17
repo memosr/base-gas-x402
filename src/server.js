@@ -19,6 +19,7 @@ import {
   getCheapestWindow,
 } from "./history.js";
 import { getEthUsd } from "./price.js";
+import { paidRateLimit, PAID_PER_MINUTE } from "./ratelimit.js";
 
 // Common gas limits, surfaced in the discovery docs so agents know what to pass.
 const GAS_LIMIT_PRESETS = {
@@ -1137,6 +1138,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Before the paywall, so a limited request gets 429 and is never charged.
+// Only requests carrying a payment header count (see ratelimit.js).
+app.use(paidRateLimit());
+
 app.use(paymentMiddleware(routes, resourceServer));
 
 // --- Paid route ---------------------------------------------------------
@@ -1269,6 +1274,11 @@ app.listen(PORT, () => {
   console.log(`  paid:  GET /gas/compare          (${COMPARE_PRICE} via x402, ${PAYMENT_NETWORK})`);
   console.log(`  paid:  GET /gas/history          (${HISTORY_PRICE} via x402, ${PAYMENT_NETWORK})`);
   console.log(`  paid:  GET /gas/cheapest-window  (${WINDOW_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(
+    PAID_PER_MINUTE === 0
+      ? "  rate limit: off (RATE_LIMIT_PAID_PER_MIN=0)"
+      : `  rate limit: ${PAID_PER_MINUTE} paid requests per client per minute`,
+  );
 
   // Start collecting only once the server is actually up, so a boot failure
   // does not leave a sampler running against a half-initialised process.
