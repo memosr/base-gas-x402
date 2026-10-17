@@ -10,7 +10,7 @@
 | | Başlangıç (25 Tem) | Şimdi |
 |---|---|---|
 | Endpoint | 1 | 5 |
-| Fiyat | $0.001 | $0.005 - $0.02 |
+| Fiyat | $0.001 | $0.002 - $0.02 |
 | Discovery uyarısı | 2 | 0 |
 | Bazaar kaydı | Her saat reddediliyor | Çalışıyor |
 | AgentCash arama sırası | Görünmüyor | **1.** |
@@ -112,6 +112,11 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 - [x] RPC yanıtlarını 2 saniye cache'le (30 Eylül)
 - [x] Maliyet tahminlerine USD eklendi, `/gas` ve `/gas/compare` (Chainlink ETH/USD, Base). Fiyat okunamazsa `usd: null`, geri kalan yanıt etkilenmez (30 Eylül)
 - [x] Rate limiting: istemci başına dakikada 60 ücretli istek, X-Real-IP ile (17 Ekim)
+- [x] `/gas` ve sampler için yedek RPC (Alchemy, mainnet.base.org, publicnode), RPC zaman aşımı 4 sn (17 Ekim)
+- [x] Hatalı env değerinde servis başlamıyor; `PAY_TO_ADDRESS` geçersizse de (17 Ekim)
+- [x] 502 yanıtlarında RPC anahtarı sızıntısı kapatıldı, Alchemy anahtarı yenilendi (16 Ekim)
+- [x] @x402/* 2.28'e güncellendi, npm audit 0 açık (17 Ekim)
+- [x] L1 data fee ölçüldü: toplam maliyetin %1'inden az, tahmine eklenmedi (17 Ekim)
 - [ ] Uptime monitörü (UptimeRobot, `/health`)
 - [x] Railway Watch Paths: doküman commit'leri artık deploy tetiklemiyor (30 Eylül)
 - [x] Railway Healthcheck `/health`: deploy sırasında kesinti yok (30 Eylül)
@@ -119,7 +124,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 ### Sitede düzeltilecekler
 
 - [ ] "No competitor does this" ifadesini "I have not found another that does" ile değiştir. Kanıtlanamayan olumsuzlama.
-- [ ] Örnekleme sürekliliği ima eden cümleyi düzelt: veri bellekte ve deploy'da sıfırlanıyor, bunu açıkça yaz.
+- [x] ~~Örnekleme sürekliliği: veri deploy'da sıfırlanıyor~~ Artık geçersiz: Upstash ile geçmiş veri deploy'larda korunuyor.
 - [ ] `/health` için CORS ekle, sitedeki kapsama satırı canlı sayı gösterebilsin (tek satır)
 - [ ] Findings bölümünü ayrı bir teknik yazıya taşımayı değerlendir
 - [ ] Custom domain
@@ -128,7 +133,7 @@ En az beş rakip Base gas endpoint'i var. `gas.ivan-tempo.xyz` yedi zincir kaps�
 
 - **14 Ekim:** Rating BB'ye düştü (son 7 günde 0 organik ajan). Ödeme akışı test edildi, çalışıyor. AgentCash aramasında "Base gas oracle" için `/gas` ilk 10'da çıkmıyordu; 1. sıradaki Otto aynı veriyi $0.001'e satıyor. Arama metni USD ve farklılaştırıcı route'larla yenilendi, `/gas` $0.005'ten $0.002'ye indirildi (deneme, 2 hafta sonra değerlendirilecek).
 - ~~**`/gas/cheapest-window` bu haliyle satılabilir mi?**~~ 30 Eylül ölçümü: 7 günde gerçek bir döngü var (`confidence: pattern`), ama %15.3'ün çoğu tek saatten (08:00 UTC) geliyor. Fiyat $0.02'de kaldı; yanıta `avoidHoursUtc`, `savingsVsAveragePercent` (ortalamaya göre ~%1) ve `savingsUsd` eklendi.
-- **`/gas/history` fiyatı $0.012, rakipte $0.001 var.** Zengin çıktı bunu haklı çıkarıyor mu, yoksa fiyat kırılmalı mı?
+- **`/gas/history` fiyatı $0.01, rakipte $0.001 var.** Zengin çıktı bunu haklı çıkarıyor mu, yoksa fiyat kırılmalı mı? (28 Ekim değerlendirmesinde bakılacak)
 - ~~**`HISTORY_PRICE_USD=0.012` env değişkeni**~~ Railway'den silindi (30 Eylül), fiyat $0.01.
 
 ---

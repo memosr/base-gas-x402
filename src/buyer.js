@@ -71,18 +71,30 @@ async function main() {
   const probe = await fetch(TARGET_URL);
   console.log(`      status: ${probe.status} ${probe.statusText}`);
 
+  let priceLabel = "the advertised price";
   if (probe.status === 402) {
-    const challenge = await probe.json().catch(() => null);
+    // x402 v2 puts the payment requirements in the base64-encoded
+    // PAYMENT-REQUIRED header; the body is empty. Older servers used the body.
+    const header = probe.headers.get("payment-required");
+    let challenge = null;
+    try {
+      challenge = header
+        ? JSON.parse(Buffer.from(header, "base64").toString("utf8"))
+        : await probe.json();
+    } catch {
+      challenge = null;
+    }
     if (challenge?.accepts?.length) {
       // accepts[] carries the payment requirements the server advertises.
       for (const req of challenge.accepts) {
-        console.log(
-          `      requires: ${req.price ?? req.maxAmountRequired ?? "?"} ` +
-            `on ${req.network} -> payTo ${req.payTo}`,
-        );
+        // v2 states `amount` in atomic USDC units (6 decimals).
+        const atomic = req.amount ?? req.maxAmountRequired;
+        const usd = atomic !== undefined ? `$${Number(atomic) / 1e6} USDC` : "?";
+        priceLabel = usd;
+        console.log(`      requires: ${usd} on ${req.network} -> payTo ${req.payTo}`);
       }
     } else {
-      console.log("      402 body:", JSON.stringify(challenge));
+      console.log("      (could not read the payment requirements from the 402)");
     }
   } else {
     console.log(
@@ -94,7 +106,7 @@ async function main() {
   // --- Step 2: pay via x402 and read the gas data ----------------------
   // x402Client registers the EVM "exact" scheme for Base mainnet using the
   // viem account as the signer. wrapFetchWithPayment then transparently
-  // answers any 402 by signing + retrying with an X-PAYMENT header.
+  // answers any 402 by signing + retrying with a PAYMENT-SIGNATURE header.
   const client = new x402Client().register(
     PAYMENT_NETWORK,
     new ExactEvmScheme(account),
@@ -104,7 +116,7 @@ async function main() {
   client.registerExtension(new BuilderCodeClientExtension(BUILDER_CODE_VALUE));
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
-  console.log("[2/2] GET with x402 payment ($0.001 USDC on Base mainnet)...");
+  console.log(`[2/2] GET with x402 payment (${priceLabel} on Base mainnet)...`);
   const response = await fetchWithPayment(TARGET_URL);
   console.log(`      status: ${response.status} ${response.statusText}`);
 
@@ -120,9 +132,10 @@ async function main() {
   console.log(JSON.stringify(data, null, 2));
 
   // --- Settlement details ----------------------------------------------
-  // The X-PAYMENT-RESPONSE header carries the facilitator's settlement
-  // receipt (tx hash, payer, settled amount) once payment clears on-chain.
-  const settlementHeader = response.headers.get("x-payment-response");
+  // The PAYMENT-RESPONSE header (X-PAYMENT-RESPONSE on x402 v1 servers)
+  // carries the facilitator's settlement receipt (tx hash, payer, amount).
+  const settlementHeader =
+    response.headers.get("payment-response") ?? response.headers.get("x-payment-response");
   if (settlementHeader) {
     try {
       const settlement = decodePaymentResponseHeader(settlementHeader);
@@ -137,12 +150,12 @@ async function main() {
         console.log(`  transaction: ${settlement.transaction}`);
     } catch (error) {
       console.log(
-        `  (could not decode X-PAYMENT-RESPONSE: ${extractErrorMessage(error)})`,
+        `  (could not decode PAYMENT-RESPONSE: ${extractErrorMessage(error)})`,
       );
     }
   } else {
     console.log("");
-    console.log("(no X-PAYMENT-RESPONSE header returned by the server)");
+    console.log("(no PAYMENT-RESPONSE header returned by the server)");
   }
 }
 

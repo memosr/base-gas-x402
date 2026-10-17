@@ -42,12 +42,15 @@ with environment variables (see `.env.example`).
 1. A request without payment receives **HTTP 402 Payment Required** with a
    `payment-required` header describing the price, network, asset, and
    `payTo` address.
-2. The client signs an EIP-712 payment authorization and retries with an
-   `X-PAYMENT` header.
+2. The client signs an EIP-712 payment authorization and retries with a
+   `PAYMENT-SIGNATURE` header (`X-PAYMENT` on x402 v1 clients).
 3. Payment is verified and settled on Base mainnet through the **Coinbase CDP
    production facilitator** (`https://api.cdp.coinbase.com/platform/v2/x402`).
-   On success, the server returns **HTTP 200** with the gas data and an
-   `X-PAYMENT-RESPONSE` settlement receipt header.
+   On success, the server returns **HTTP 200** with the gas data and a
+   `PAYMENT-RESPONSE` settlement receipt header.
+4. A client sending more than 60 paid requests a minute gets **HTTP 429**
+   before the paywall runs, so nothing is charged. Requests without payment
+   are never limited.
 
 The paywall middleware runs before the handler, so gas data is only fetched
 after a valid payment clears. The resource also publishes x402 Bazaar
@@ -149,7 +152,7 @@ data read directly from the network (nothing is fabricated):
 | --- | --- |
 | `chain` | Chain name (`base-mainnet`). |
 | `chainId` | EVM chain ID (`8453`). |
-| `rpcSource` | Hostname of the RPC the data was read from (never the full URL, which may carry a provider key). |
+| `rpcSource` | Hostname of the RPC that answered (never the full URL, which may carry a provider key). Differs from the primary while it is failing over to a fallback. |
 | `blockNumber` | Latest block number used for the reading. |
 | `units` | Unit hints: fees are in **gwei**, cost is in gwei, ETH and USD. |
 | `baseFeePerGas` | Current block base fee, in gwei. |
@@ -161,6 +164,10 @@ data read directly from the network (nothing is fabricated):
 | `estimatedTransferCost.eth` | Estimated transfer cost in ETH. |
 | `estimatedTransferCost.usd` | Estimated cost in US dollars (4 significant digits). `null` if the price feed is unavailable. |
 | `ethUsd` | ETH/USD price behind the USD figure, read on-chain from the Chainlink ETH/USD feed on Base. `null` if unavailable or stale (older than 2 hours). |
+
+The estimate covers L2 execution gas only. Base also charges an L1 data fee;
+measured in October 2026 it was under 1% of the total for a transfer, an
+ERC-20 transfer and a swap-sized transaction, so it is left out.
 | `fetchedAt` | ISO-8601 timestamp of the reading. |
 
 ## Buyer example
@@ -174,15 +181,15 @@ npm run buyer
 
 It performs the full payment flow:
 
-1. **Probe** — `GET /gas` without payment and shows the `402` challenge and the
+1. **Probe**: `GET /gas` without payment and shows the `402` challenge and the
    advertised payment requirements.
-2. **Pay** — wraps `fetch` with x402, transparently signs an EIP-712
-   authorization with the buyer's key, retries with the `X-PAYMENT` header, and
-   prints the `200` gas data plus the settlement receipt (tx hash, payer,
-   settled amount) from the `X-PAYMENT-RESPONSE` header.
+2. **Pay**: wraps `fetch` with x402, transparently signs an EIP-712
+   authorization with the buyer's key, retries with the `PAYMENT-SIGNATURE`
+   header, and prints the `200` gas data plus the settlement receipt (tx hash,
+   payer, settled amount) from the `PAYMENT-RESPONSE` header.
 
 > [!WARNING]
-> The buyer requires `BUYER_PRIVATE_KEY` — a **funded Base mainnet private key
+> The buyer requires `BUYER_PRIVATE_KEY`: a **funded Base mainnet private key
 > holding USDC**. **Every run spends a real $0.002 USDC on-chain.** The key is
 > read only from the environment and is never logged or printed; only the
 > derived public address is shown. Never commit a real key.
@@ -207,8 +214,20 @@ Copy `.env.example` to `.env` and fill in the values:
 | `PAY_TO_ADDRESS` | Yes | Base mainnet address that receives payments. |
 | `CDP_API_KEY_ID` | Yes | Coinbase CDP API key ID (production facilitator). |
 | `CDP_API_KEY_SECRET` | Yes | Coinbase CDP API key secret. |
-| `BASE_MAINNET_RPC_URL` | No | Base mainnet RPC (defaults to `https://mainnet.base.org`). |
+| `BASE_MAINNET_RPC_URL` | No | Primary Base mainnet RPC (defaults to `https://mainnet.base.org`). |
+| `BASE_MAINNET_RPC_FALLBACK_URLS` | No | Comma-separated RPCs tried when the primary fails (defaults to mainnet.base.org and publicnode). |
+| `OPTIMISM_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL` | No | Put first in that chain's fallback list for `/gas/compare`. |
+| `GAS_PRICE_USD`, `COMPARE_PRICE_USD`, `HISTORY_PRICE_USD`, `WINDOW_PRICE_USD` | No | Per-route prices in USD. |
+| `RPC_CACHE_MS` | No | How long one RPC read is shared between callers (default `2000`, `0` disables). |
+| `RATE_LIMIT_PAID_PER_MIN` | No | Paid requests per client per minute (default `60`, `0` disables). |
+| `HISTORY_SAMPLE_INTERVAL_MS` | No | Gas sampling interval (default `300000`, 10s to 1h). |
+| `HISTORY_RETENTION_HOURS` | No | History kept, and the max `hours` callers can ask for (default `168`, 1 to 720). |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | No | Make history survive redeploys. Without them it is memory only. |
+| `BUILDER_CODE` | No | Base Builder Code advertised for payment attribution. |
 | `PORT` | No | Server port (defaults to `4021`). |
+
+The server refuses to start if `PAY_TO_ADDRESS` is not a valid address or a
+numeric setting is out of range, so a typo fails loudly instead of quietly.
 
 The CDP API key is required because the production (mainnet) facilitator signs
 each verify/settle request. Create a **Secret API Key** at
@@ -225,7 +244,7 @@ The server logs the free and paid routes once it's listening.
 
 ## Environment & security
 
-- `.env` is **never committed** — it is listed in `.gitignore`.
+- `.env` is **never committed**: it is listed in `.gitignore`.
 - The **CDP API key secret** and the **buyer private key** are secrets. Keep
   them out of source control and out of logs.
 - The buyer reads `BUYER_PRIVATE_KEY` from the environment only and never echoes
@@ -243,13 +262,13 @@ The server logs the free and paid routes once it's listening.
   and the [`@coinbase/x402`](https://www.npmjs.com/package/@coinbase/x402) CDP
   facilitator config
 - **Chain access:** [viem](https://viem.sh/) reading Base mainnet
-- **Payment asset:** USDC on Base mainnet —
+- **Payment asset:** USDC on Base mainnet:
   `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 
 ## What is x402?
 
 x402 is an open protocol that revives the HTTP `402 Payment Required` status
-code to enable per-request payments — letting clients (including autonomous
+code to enable per-request payments, letting clients (including autonomous
 agents) pay for API calls with stablecoins, no accounts or API keys needed.
 Learn more at [x402.org](https://x402.org) and the
 [Coinbase CDP docs](https://docs.cdp.coinbase.com/).
