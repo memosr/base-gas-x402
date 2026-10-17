@@ -66,7 +66,12 @@ const clients = new Map(
   CHAINS.map((entry) => [
     entry.key,
     entry.rpcUrls.map((url) =>
-      createPublicClient({ chain: entry.chain, transport: http(url) }),
+      createPublicClient({
+        chain: entry.chain,
+        // Fail over quickly to the next RPC instead of waiting out viem's
+        // default 10s timeout and 3 retries on a dead one.
+        transport: http(url, { timeout: 4_000, retryCount: 1 }),
+      }),
     ),
   ]),
 );

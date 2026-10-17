@@ -17,7 +17,26 @@ export const MAX_GAS_LIMIT = 30000000n;
 const REWARD_PERCENTILES = [25, 50, 90];
 const FEE_HISTORY_BLOCKS = 10;
 
-const rpcUrl = process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org";
+/**
+ * RPCs tried in order, so one provider going down does not stop paid /gas
+ * calls and the history sampler at the same time. The operator's URL (often a
+ * keyed provider such as Alchemy) comes first; the public endpoints are the
+ * safety net. Duplicates are dropped.
+ */
+const DEFAULT_FALLBACK_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
+
+const fallbackRpcs = process.env.BASE_MAINNET_RPC_FALLBACK_URLS
+  ? process.env.BASE_MAINNET_RPC_FALLBACK_URLS.split(",").map((u) => u.trim())
+  : DEFAULT_FALLBACK_RPCS;
+
+const rpcUrls = [
+  ...new Set([process.env.BASE_MAINNET_RPC_URL, ...fallbackRpcs].filter(Boolean)),
+];
+
+// Fail over quickly: a paid caller should not wait out viem's default
+// 10s timeout and 3 retries on a dead RPC before the next one is tried.
+const RPC_TIMEOUT_MS = 4_000;
+const RPC_RETRY_COUNT = 1;
 
 /**
  * The RPC URL often carries a provider API key in its path or query string
@@ -33,12 +52,13 @@ function rpcSource(url) {
   }
 }
 
-const RPC_SOURCE = rpcSource(rpcUrl);
-
-const client = createPublicClient({
-  chain: base,
-  transport: http(rpcUrl),
-});
+const rpcs = rpcUrls.map((url) => ({
+  source: rpcSource(url),
+  client: createPublicClient({
+    chain: base,
+    transport: http(url, { timeout: RPC_TIMEOUT_MS, retryCount: RPC_RETRY_COUNT }),
+  }),
+}));
 
 /**
  * Averages a single reward-percentile column across the returned blocks.
@@ -69,23 +89,36 @@ function averageRewardColumn(reward, columnIndex) {
  * gasLimit, so one cached read serves every caller within the same block,
  * whatever gasLimit each of them asked for. See cache.js.
  */
-const readChainState = cached(
-  () =>
-    Promise.all([
-      client.getBlock({ blockTag: "latest" }),
-      client.getFeeHistory({
-        blockCount: FEE_HISTORY_BLOCKS,
-        rewardPercentiles: REWARD_PERCENTILES,
-      }),
-      client.getGasPrice(),
-    ]),
-  RPC_CACHE_MS,
-);
+async function loadChainState() {
+  let lastError;
+  // All three reads come from the same RPC, so they describe the same chain
+  // view. The first RPC that answers all three wins.
+  for (const { source, client } of rpcs) {
+    try {
+      const reads = await Promise.all([
+        client.getBlock({ blockTag: "latest" }),
+        client.getFeeHistory({
+          blockCount: FEE_HISTORY_BLOCKS,
+          rewardPercentiles: REWARD_PERCENTILES,
+        }),
+        client.getGasPrice(),
+      ]);
+      return [...reads, source];
+    } catch (error) {
+      lastError = error;
+      // Hostname only: the full URL may carry an API key.
+      console.error(`[gas] RPC ${source} failed, trying the next one:`, error?.shortMessage || "request failed");
+    }
+  }
+  throw lastError;
+}
+
+const readChainState = cached(loadChainState, RPC_CACHE_MS);
 
 export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
   // getEthUsd never throws: without a price the USD fields are null and the
   // rest of the response is unaffected.
-  const [[block, feeHistory, gasPrice], ethUsd] = await Promise.all([
+  const [[block, feeHistory, gasPrice, source], ethUsd] = await Promise.all([
     readChainState(),
     getEthUsd(),
   ]);
@@ -104,7 +137,8 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
   return {
     chain: "base-mainnet",
     chainId: base.id,
-    rpcSource: RPC_SOURCE,
+    // The RPC that actually answered, which differs from the primary during a failover.
+    rpcSource: source,
     blockNumber: block.number?.toString() ?? null,
     units: { fees: "gwei", cost: "gwei + ETH + USD" },
     baseFeePerGas: formatGwei(baseFeePerGas),
