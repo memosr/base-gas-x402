@@ -1159,6 +1159,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// HEAD on a paid route must not run the handler for free. The x402 payment
+// middleware (up to @x402/core 2.28.0) matches "GET /gas" only for GET, while
+// Express answers HEAD with the GET handler, so HEAD skipped the paywall and
+// still triggered the RPC reads behind it. Fixed upstream in
+// x402-foundation/x402#3796 but not released yet; refuse HEAD here meanwhile.
+// Reported by Frits (x402 Doctor, Fizzl).
+const PAID_PATHS = new Set(Object.keys(routes).map((key) => key.split(" ")[1]));
+app.use((req, res, next) => {
+  if (req.method === "HEAD" && PAID_PATHS.has(req.path)) {
+    return res.set("Allow", "GET").status(405).end();
+  }
+  next();
+});
+
 // Before the paywall, so a limited request gets 429 and is never charged.
 // Only requests carrying a payment header count (see ratelimit.js).
 app.use(paidRateLimit());
