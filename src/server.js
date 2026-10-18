@@ -55,7 +55,7 @@ if (!/^\d+(\.\d+)?$/.test(GAS_PRICE_USD) || Number(GAS_PRICE_USD) <= 0) {
   );
 }
 
-// Price per /gas/compare call. Higher than /gas because it reads four chains.
+// Price per /gas/compare call. Higher than /gas because it reads five chains.
 const COMPARE_PRICE_USD = process.env.COMPARE_PRICE_USD || "0.01";
 
 if (!/^\d+(\.\d+)?$/.test(COMPARE_PRICE_USD) || Number(COMPARE_PRICE_USD) <= 0) {
@@ -176,6 +176,14 @@ const COMPARE_OUTPUT_EXAMPLE = {
       gasPrice: "0.006",
       estimatedCost: { gasLimit: 21000, gwei: "126", eth: "0.000000126", usd: "0.0003" },
     },
+    {
+      chain: "arc",
+      label: "Arc",
+      chainId: 5042,
+      gasToken: "USDC",
+      gasPrice: "20.5",
+      estimatedCost: { gasLimit: 21000, eth: null, usdc: "0.0004305", usd: "0.0004305" },
+    },
   ],
   cheapest: "base",
   baseRank: 1,
@@ -274,7 +282,7 @@ const routes = {
       payTo: PAY_TO_ADDRESS,
     },
     description:
-      "Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum in one call, in USD and ETH, ranked cheapest first.",
+      "Live gas cost across Base, OP Mainnet, Arbitrum One, Ethereum and Arc (USDC gas) in one call, in USD, ranked cheapest first.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: [
@@ -613,9 +621,9 @@ const OPENAPI_DOCUMENT = {
     "/gas/compare": {
       get: {
         summary:
-          "Compare live gas costs across Base, OP Mainnet, Arbitrum, and Ethereum (paid via x402)",
+          "Compare live gas costs across Base, OP Mainnet, Arbitrum, Ethereum and Arc (paid via x402)",
         description:
-          `Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit in ETH and US dollars, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+          `Compares live gas costs across Base, OP Mainnet, Arbitrum One, Ethereum and Circle's Arc in a single call, ranked cheapest first by US dollar cost. Arc pays gas in USDC, so its cost is quoted in USDC and USD with eth null. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit in ETH and US dollars, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
         operationId: "compareGas",
         parameters: [
           {
@@ -663,6 +671,12 @@ const OPENAPI_DOCUMENT = {
                           chain: { type: "string", example: "base" },
                           label: { type: "string", example: "Base" },
                           chainId: { type: "integer", example: 8453 },
+                          gasToken: {
+                            type: "string",
+                            enum: ["ETH", "USDC"],
+                            description: "Token the chain charges gas in. USDC on Arc, ETH elsewhere.",
+                            example: "ETH",
+                          },
                           blockNumber: { type: "string", example: "49106604" },
                           baseFeePerGas: { type: "string", example: "0.005" },
                           gasPrice: { type: "string", example: "0.006" },
@@ -672,13 +686,19 @@ const OPENAPI_DOCUMENT = {
                               gasLimit: { type: "integer", example: 21000 },
                               gwei: { type: "string", example: "126" },
                               eth: {
-                                type: "string",
+                                type: ["string", "null"],
+                                description: "Cost in ETH. Null on Arc, which charges gas in USDC.",
                                 example: "0.000000126",
+                              },
+                              usdc: {
+                                type: "string",
+                                description: "Arc only: cost in USDC, the chain's gas token.",
+                                example: "0.000441",
                               },
                               usd: {
                                 type: ["string", "null"],
                                 description:
-                                  "Estimated cost in US dollars. All four chains pay gas in ETH, so one ETH/USD price covers them. Null if the price is unavailable.",
+                                  "Estimated cost in US dollars. ETH chains use one Chainlink ETH/USD price; Arc is USDC already. Null on the ETH chains if the price is unavailable, in which case Arc is listed last because the two cannot be ranked.",
                                 example: "0.0003339",
                               },
                             },
@@ -1085,7 +1105,7 @@ app.get("/info", (_req, res) => {
       "GET /": "HTML landing page (free).",
       "GET /info": "This service description as JSON (free).",
       "GET /gas": `Live Base mainnet gas data. Costs ${GAS_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
-      "GET /gas/compare": `Live gas comparison across Base, OP Mainnet, Arbitrum One, and Ethereum. Costs ${COMPARE_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
+      "GET /gas/compare": `Live gas comparison across Base, OP Mainnet, Arbitrum One, Ethereum and Arc. Costs ${COMPARE_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
       "GET /gas/history": `Historical Base gas prices with trend statistics and a cheap/normal/expensive verdict. Costs ${HISTORY_PRICE} per call.`,
       "GET /gas/cheapest-window": `Cheapest hours of day to transact on Base, from observed history. Costs ${WINDOW_PRICE} per call.`,
       "GET /health": "Service status and gas history coverage (free).",

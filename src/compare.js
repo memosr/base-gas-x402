@@ -1,4 +1,4 @@
-import { createPublicClient, http, formatGwei, formatEther } from "viem";
+import { createPublicClient, defineChain, http, formatGwei, formatEther } from "viem";
 import { base, mainnet, optimism, arbitrum } from "viem/chains";
 import { cached, RPC_CACHE_MS } from "./cache.js";
 import { getEthUsd, weiToUsd, ethUsdBlock } from "./price.js";
@@ -20,6 +20,17 @@ import { getEthUsd, weiToUsd, ethUsdBlock } from "./price.js";
 function rpcList(envUrl, fallbacks) {
   return envUrl ? [envUrl, ...fallbacks] : fallbacks;
 }
+
+// Circle's Arc mainnet. viem ships only the testnet definition. Gas is paid in
+// USDC, which the native accounting carries with 18 decimals, so a cost in
+// native units is already a dollar amount and needs no price feed.
+export const arc = defineChain({
+  id: 5042,
+  name: "Arc",
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.mainnet.arc.io"] } },
+  blockExplorers: { default: { name: "Arc Explorer", url: "https://explorer.arc.io" } },
+});
 
 const CHAINS = [
   {
@@ -57,6 +68,17 @@ const CHAINS = [
       "https://ethereum-rpc.publicnode.com",
       "https://eth.drpc.org",
       "https://eth.llamarpc.com",
+    ]),
+  },
+  {
+    key: "arc",
+    label: "Arc",
+    chain: arc,
+    gasToken: "USDC",
+    rpcUrls: rpcList(process.env.ARC_RPC_URL, [
+      "https://rpc.mainnet.arc.io",
+      "https://rpc.drpc.mainnet.arc.io",
+      "https://rpc.quicknode.mainnet.arc.io",
     ]),
   },
 ];
@@ -117,26 +139,49 @@ async function readChain(entry, gasLimit, ethUsdPromise) {
 
   const baseFeePerGas = block.baseFeePerGas ?? 0n;
   const costWei = gasPrice * gasLimit;
+  const paysInUsdc = entry.gasToken === "USDC";
 
   return {
     chain: entry.key,
     label: entry.label,
     chainId: entry.chain.id,
+    gasToken: paysInUsdc ? "USDC" : "ETH",
     blockNumber: block.number?.toString() ?? null,
     baseFeePerGas: formatGwei(baseFeePerGas),
     gasPrice: formatGwei(gasPrice),
     estimatedCost: {
       gasLimit: Number(gasLimit),
       gwei: formatGwei(costWei),
-      eth: formatEther(costWei),
-      // All four chains pay gas in ETH, so one ETH/USD price covers them all.
-      usd: weiToUsd(costWei, ethUsd),
+      // ETH chains: cost in ETH, converted with one ETH/USD price. Arc: gas is
+      // USDC, so the native amount is the dollar cost and eth is null.
+      eth: paysInUsdc ? null : formatEther(costWei),
+      ...(paysInUsdc ? { usdc: formatEther(costWei) } : {}),
+      usd: paysInUsdc ? weiToUsd(costWei, ONE_DOLLAR) : weiToUsd(costWei, ethUsd),
     },
   };
 }
 
+// weiToUsd takes a price per native unit; 1 USDC is $1.
+const ONE_DOLLAR = { usd: 1 };
+
 /**
- * Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum.
+ * Orders chains cheapest first. With an ETH/USD price every chain has a usd
+ * cost and they rank together. Without one, the ETH chains still rank by ETH
+ * and USDC-gas chains go last, since the two cannot be compared.
+ */
+export function rank(chains) {
+  const usd = (c) => (c.estimatedCost.usd === null ? null : Number(c.estimatedCost.usd));
+  if (chains.every((c) => usd(c) !== null)) {
+    return [...chains].sort((a, b) => usd(a) - usd(b));
+  }
+  const inEth = chains.filter((c) => c.estimatedCost.eth !== null);
+  const other = chains.filter((c) => c.estimatedCost.eth === null);
+  inEth.sort((a, b) => Number(a.estimatedCost.eth) - Number(b.estimatedCost.eth));
+  return [...inEth, ...other];
+}
+
+/**
+ * Compares live gas costs across Base, OP Mainnet, Arbitrum One, Ethereum and Arc.
  *
  * One slow or failing chain must not take down the whole response, so each
  * chain is read independently and failures are reported per chain rather than
@@ -167,11 +212,7 @@ export async function getGasComparison(gasLimit = DEFAULT_GAS_LIMIT) {
     }
   });
 
-  // Rank by absolute cost in wei rather than gwei strings, to avoid float
-  // comparison on formatted values.
-  const ranked = [...chains].sort(
-    (a, b) => Number(a.estimatedCost.eth) - Number(b.estimatedCost.eth),
-  );
+  const ranked = rank(chains);
 
   const cheapest = ranked[0] ?? null;
   const baseEntry = chains.find((c) => c.chain === "base") ?? null;

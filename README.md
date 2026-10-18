@@ -27,7 +27,7 @@ on-chain micropayment per request.
 | Route | Price | What it returns |
 | --- | --- | --- |
 | `GET /gas` | $0.002 | Live Base gas: base fee, priority tiers, cost estimate for any `gasLimit` |
-| `GET /gas/compare` | $0.01 | Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum, cheapest first |
+| `GET /gas/compare` | $0.01 | Live gas cost across Base, OP Mainnet, Arbitrum One, Ethereum and Arc (USDC gas), cheapest first in USD |
 | `GET /gas/history` | $0.01 | Gas time series, min/max/avg/median and a cheap/normal/expensive/flat verdict |
 | `GET /gas/cheapest-window` | $0.02 | Hour-of-day averages in UTC and whether timing saves anything |
 | `GET /health` | free | Status and how much gas history has been collected |
@@ -224,7 +224,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `CDP_API_KEY_SECRET` | Yes | Coinbase CDP API key secret. |
 | `BASE_MAINNET_RPC_URL` | No | Primary Base mainnet RPC (defaults to `https://mainnet.base.org`). |
 | `BASE_MAINNET_RPC_FALLBACK_URLS` | No | Comma-separated RPCs tried when the primary fails (defaults to mainnet.base.org and publicnode). |
-| `OPTIMISM_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL` | No | Put first in that chain's fallback list for `/gas/compare`. |
+| `OPTIMISM_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL`, `ARC_RPC_URL` | No | Put first in that chain's fallback list for `/gas/compare`. |
 | `GAS_PRICE_USD`, `COMPARE_PRICE_USD`, `HISTORY_PRICE_USD`, `WINDOW_PRICE_USD` | No | Per-route prices in USD. |
 | `RPC_CACHE_MS` | No | How long one RPC read is shared between callers (default `2000`, `0` disables). |
 | `RATE_LIMIT_PAID_PER_MIN` | No | Paid requests per client per minute (default `60`, `0` disables). |
