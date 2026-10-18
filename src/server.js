@@ -1165,9 +1165,12 @@ app.use((req, res, next) => {
 // still triggered the RPC reads behind it. Fixed upstream in
 // x402-foundation/x402#3796 but not released yet; refuse HEAD here meanwhile.
 // Reported by Frits (x402 Doctor, Fizzl).
-const PAID_PATHS = new Set(Object.keys(routes).map((key) => key.split(" ")[1]));
+// Express routing ignores case and a trailing slash, so /GAS and /gas/ reach the
+// /gas handler too: normalize the same way before checking.
+const normalizePath = (path) => path.toLowerCase().replace(/\/+$/, "") || "/";
+const PAID_PATHS = new Set(Object.keys(routes).map((key) => normalizePath(key.split(" ")[1])));
 app.use((req, res, next) => {
-  if (req.method === "HEAD" && PAID_PATHS.has(req.path)) {
+  if (req.method === "HEAD" && PAID_PATHS.has(normalizePath(req.path))) {
     return res.set("Allow", "GET").status(405).end();
   }
   next();

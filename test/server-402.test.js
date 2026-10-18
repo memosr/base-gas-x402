@@ -88,7 +88,11 @@ test("paid requests are rate limited per client before the paywall", async () =>
 
 // HEAD on a paid route used to bypass the paywall and run the handler unpaid
 // (x402 SDK bug, fixed upstream in x402-foundation/x402#3796).
-for (const route of ["/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window"]) {
+for (const route of [
+  "/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window",
+  // Express matches these to the same handlers (case-insensitive, trailing slash).
+  "/GAS", "/gas/", "/Gas/Compare", "/gas/history/", "/GAS/CHEAPEST-WINDOW//",
+]) {
   test(`HEAD ${route} is refused, never served unpaid`, async () => {
     const res = await fetch(`http://127.0.0.1:${PORT}${route}`, { method: "HEAD" });
     assert.equal(res.status, 405);
