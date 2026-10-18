@@ -104,3 +104,12 @@ test("HEAD on a free route still works", async () => {
   const res = await fetch(`http://127.0.0.1:${PORT}/health`, { method: "HEAD" });
   assert.equal(res.status, 200);
 });
+
+test("free routes allow cross-origin reads, paid routes do not", async () => {
+  for (const route of ["/health", "/info", "/openapi.json"]) {
+    const res = await fetch(`http://127.0.0.1:${PORT}${route}`);
+    assert.equal(res.headers.get("access-control-allow-origin"), "*", route);
+  }
+  const paid = await fetch(`http://127.0.0.1:${PORT}/gas`);
+  assert.equal(paid.headers.get("access-control-allow-origin"), null);
+});

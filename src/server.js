@@ -153,12 +153,13 @@ const resourceServer = new x402ResourceServer(facilitator).register(
 const GAS_OUTPUT_EXAMPLE = {
   chain: "base-mainnet",
   chainId: 8453,
-  blockNumber: "12345678",
-  baseFeePerGas: "0.012",
-  priorityFeePerGas: { low: "0.001", medium: "0.002", high: "0.004" },
-  gasPrice: "0.014",
-  estimatedTransferCost: { gasLimit: 21000, gwei: "294", eth: "0.000000294" },
-  fetchedAt: "2026-06-22T00:00:00.000Z",
+  blockNumber: "37012345",
+  baseFeePerGas: "0.005",
+  priorityFeePerGas: { low: "0.000486", medium: "0.00101", high: "0.0064" },
+  gasPrice: "0.006",
+  estimatedTransferCost: { gasLimit: 21000, gwei: "126.21", eth: "0.00000012621", usd: "0.0003069" },
+  ethUsd: { price: "2431.78", source: "chainlink-eth-usd-base" },
+  fetchedAt: "2026-10-17T12:00:00.000Z",
 };
 
 const COMPARE_OUTPUT_EXAMPLE = {
@@ -172,7 +173,7 @@ const COMPARE_OUTPUT_EXAMPLE = {
       blockNumber: "49106604",
       baseFeePerGas: "0.005",
       gasPrice: "0.006",
-      estimatedCost: { gasLimit: 21000, gwei: "126", eth: "0.000000126" },
+      estimatedCost: { gasLimit: 21000, gwei: "126", eth: "0.000000126", usd: "0.0003" },
     },
   ],
   cheapest: "base",
@@ -193,21 +194,28 @@ const HISTORY_OUTPUT_EXAMPLE = {
   samples: [{ t: "2026-07-26T06:00:00.000Z", gasPrice: 0.006 }],
 };
 
+// Mirrors a real 7-day Base window: gas sits on its floor, so timing saves
+// about 1%. An earlier example showed 73.7%, which no real window produced.
 const WINDOW_OUTPUT_EXAMPLE = {
   chain: "base-mainnet",
   chainId: 8453,
   requestedHours: 168,
   units: "gwei",
+  hasDailyCycle: false,
+  recommendation:
+    "No meaningful daily gas cycle in this window. Timing a transaction by hour of day would not have saved anything here.",
+  savingsVsAveragePercent: 1.1,
+  avoidHoursUtc: [],
+  savingsUsd: { gasLimit: 21000, vsPriciestHour: "0.000066", vsAverageHour: "0.000004" },
+  confidence: "high",
   hourlyAverages: [
-    { hourUtc: 6, samples: 84, avgGasPrice: 0.005 },
-    { hourUtc: 14, samples: 84, avgGasPrice: 0.019 },
+    { hourUtc: 6, samples: 84, avgGasPrice: 0.006 },
+    { hourUtc: 2, samples: 84, avgGasPrice: 0.0073 },
   ],
   cheapestHourUtc: 6,
-  priciestHourUtc: 14,
-  savingsPercent: 73.7,
-  hoursObserved: 24,
+  priciestHourUtc: 2,
   coverage: { samples: 2016, hoursCovered: 168, retentionHours: 168 },
-  fetchedAt: "2026-07-26T06:08:54.972Z",
+  fetchedAt: "2026-10-18T12:00:00.000Z",
 };
 
 const routes = {
@@ -992,6 +1000,14 @@ const OPENAPI_DOCUMENT = {
     },
   },
 };
+
+// Free, public, credential-free routes may be read from any website (the
+// project site shows live /health). Paid routes stay same-origin only.
+const allowAnyOrigin = (_req, res, next) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  next();
+};
+app.use(["/health", "/info", "/openapi.json"], allowAnyOrigin);
 
 app.get("/openapi.json", (_req, res) => {
   res.json(OPENAPI_DOCUMENT);
