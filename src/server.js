@@ -158,6 +158,7 @@ const GAS_OUTPUT_EXAMPLE = {
   priorityFeePerGas: { low: "0.000486", medium: "0.00101", high: "0.0064" },
   gasPrice: "0.006",
   estimatedTransferCost: { gasLimit: 21000, gwei: "126.21", eth: "0.00000012621", usd: "0.0003069" },
+  suggestedFees: { unit: "wei", medium: { maxFeePerGas: "11010000", maxPriorityFeePerGas: "1010000" } },
   ethUsd: { price: "2431.78", source: "chainlink-eth-usd-base" },
   fetchedAt: "2026-10-17T12:00:00.000Z",
 };
@@ -234,7 +235,7 @@ const routes = {
     // Short on purpose: see the size note on /gas/history below. The
     // discovery-driving copy lives in the OpenAPI document instead.
     description:
-      "Live Base mainnet gas oracle: EIP-1559 base fee, low/medium/high priority tiers in gwei, and the cost of any transaction in USD and ETH.",
+      "Live Base mainnet gas oracle: EIP-1559 base fee, low/medium/high priority tiers, ready-to-sign maxFeePerGas, and the cost of any transaction in USD and ETH.",
     mimeType: "application/json",
     serviceName: "base-gas-x402",
     tags: ["gas", "gas price", "gas oracle", "base", "base-l2", "onchain-data"],
@@ -465,7 +466,7 @@ const OPENAPI_DOCUMENT = {
     description:
       `Base gas oracle for agents that budget in dollars. Live Base mainnet (chain id 8453) gas: EIP-1559 base fee, low/medium/high priority tiers, and what any transaction costs in USD, ETH and gwei (ETH/USD read on-chain from Chainlink). Also: live gas cost compared across Base, OP Mainnet, Arbitrum and Ethereum in one call; 7 days of Base gas history sampled every 5 minutes with a cheap/normal/expensive/flat verdict; and the hours of day to avoid. Paid per call over x402 in USDC, from $${GAS_PRICE_USD}. No API key, no signup. Free: GET /health.`,
     "x-guidance":
-      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost in US dollars, budget agent gas spending, or monitor Base L2 network congestion. Fees are returned in gwei; estimatedTransferCost also carries usd and eth. For "which chain is cheapest right now" call GET /gas/compare once instead of four chains separately. For "is gas high or low right now, should I wait" call GET /gas/history (verdict). For "when should I schedule this" call GET /gas/cheapest-window (avoidHoursUtc). Check the free GET /health first for history coverage. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
+      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost in US dollars, budget agent gas spending, or monitor Base L2 network congestion. Fees are returned in gwei; estimatedTransferCost also carries usd and eth, and suggestedFees gives maxFeePerGas / maxPriorityFeePerGas in wei, ready to sign. For "which chain is cheapest right now" call GET /gas/compare once instead of four chains separately. For "is gas high or low right now, should I wait" call GET /gas/history (verdict). For "when should I schedule this" call GET /gas/cheapest-window (avoidHoursUtc). Check the free GET /health first for history coverage. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
     contact: { email: "mehmet.sr35@gmail.com" },
   },
   servers: [{ url: "https://base-gas-x402-production.up.railway.app" }],
@@ -552,6 +553,36 @@ const OPENAPI_DOCUMENT = {
                           description:
                             "Estimated cost in US dollars, 4 significant digits. Null if the ETH/USD price is unavailable.",
                           example: "0.0007791",
+                        },
+                      },
+                    },
+                    suggestedFees: {
+                      type: "object",
+                      description:
+                        "EIP-1559 fee fields ready to pass to a wallet or viem sendTransaction, as wei strings. maxFeePerGas is 2 x baseFee + priority: a ceiling, not the price; the chain charges baseFee + priority and refunds the rest. Pick medium unless the transaction is urgent (high) or can wait (low).",
+                      properties: {
+                        unit: { type: "string", example: "wei" },
+                        basis: { type: "string" },
+                        low: {
+                          type: "object",
+                          properties: {
+                            maxFeePerGas: { type: "string", example: "11010000" },
+                            maxPriorityFeePerGas: { type: "string", example: "1010000" },
+                          },
+                        },
+                        medium: {
+                          type: "object",
+                          properties: {
+                            maxFeePerGas: { type: "string", example: "11010000" },
+                            maxPriorityFeePerGas: { type: "string", example: "1010000" },
+                          },
+                        },
+                        high: {
+                          type: "object",
+                          properties: {
+                            maxFeePerGas: { type: "string", example: "11010000" },
+                            maxPriorityFeePerGas: { type: "string", example: "1010000" },
+                          },
                         },
                       },
                     },

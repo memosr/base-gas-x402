@@ -137,6 +137,13 @@ data read directly from the network (nothing is fabricated):
     "eth": "0.000000294",
     "usd": "0.0007791"
   },
+  "suggestedFees": {
+    "unit": "wei",
+    "basis": "maxFeePerGas = 2 x baseFee + maxPriorityFeePerGas; you pay baseFee + priority, the rest is a ceiling",
+    "low": { "maxFeePerGas": "25000000", "maxPriorityFeePerGas": "1000000" },
+    "medium": { "maxFeePerGas": "26000000", "maxPriorityFeePerGas": "2000000" },
+    "high": { "maxFeePerGas": "28000000", "maxPriorityFeePerGas": "4000000" }
+  },
   "ethUsd": {
     "price": "2650.12",
     "source": "chainlink-eth-usd-base",
@@ -163,6 +170,7 @@ data read directly from the network (nothing is fabricated):
 | `estimatedTransferCost.gwei` | Estimated transfer cost in gwei. |
 | `estimatedTransferCost.eth` | Estimated transfer cost in ETH. |
 | `estimatedTransferCost.usd` | Estimated cost in US dollars (4 significant digits). `null` if the price feed is unavailable. |
+| `suggestedFees` | `maxFeePerGas` / `maxPriorityFeePerGas` per tier, in wei, ready to pass to a wallet or viem `sendTransaction`. `maxFeePerGas` is 2 x base fee + priority: a ceiling, not the price. |
 | `ethUsd` | ETH/USD price behind the USD figure, read on-chain from the Chainlink ETH/USD feed on Base. `null` if unavailable or stale (older than 2 hours). |
 
 The estimate covers L2 execution gas only. Base also charges an L1 data fee;

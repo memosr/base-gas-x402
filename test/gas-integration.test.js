@@ -98,3 +98,14 @@ test("price available: USD figures appear", async () => {
   assert.deepEqual(data.ethUsd.price, "2650.12");
   assert.equal(data.ethUsd.source, "chainlink-eth-usd-base");
 });
+
+test("suggestedFees: wei strings a wallet can sign with, 2x base fee headroom", async () => {
+  const { suggestedFees: f } = await gas.getGasData();
+  // fake RPC: base fee 5,000,000 wei; priority low/medium/high 1,000,000 / 1,000,000 / 2,000,000.
+  assert.equal(f.unit, "wei");
+  assert.deepEqual(f.medium, { maxFeePerGas: "11000000", maxPriorityFeePerGas: "1000000" });
+  assert.deepEqual(f.high, { maxFeePerGas: "12000000", maxPriorityFeePerGas: "2000000" });
+  for (const tier of ["low", "medium", "high"]) {
+    assert.ok(BigInt(f[tier].maxFeePerGas) > BigInt(f[tier].maxPriorityFeePerGas));
+  }
+});
