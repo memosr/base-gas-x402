@@ -55,9 +55,20 @@ const PAYMENT_NETWORK = "eip155:8453";
 
 // Spend controls. A stranger can post as fast as the rate limiter allows, so
 // these are what stand between a public room and an empty wallet.
-const MAX_USD_PER_DAY = Number(process.env.MAX_USD_PER_DAY || 1);
-const MAX_ANSWERS_PER_MINUTE = Number(process.env.MAX_ANSWERS_PER_MINUTE || 4);
-const MAX_USD_PER_CALL = Number(process.env.MAX_USD_PER_CALL || 0.02);
+// A typo such as "1usd" must stop the bridge, not turn into NaN: every
+// comparison against NaN is false, which would silently disable all three caps.
+function positiveEnv(name, fallback, { integer = false } = {}) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || (integer && !Number.isInteger(value))) {
+    throw new Error(`${name} must be a positive ${integer ? "integer" : "number"}, got "${raw}"`);
+  }
+  return value;
+}
+const MAX_USD_PER_DAY = positiveEnv("MAX_USD_PER_DAY", 1);
+const MAX_ANSWERS_PER_MINUTE = positiveEnv("MAX_ANSWERS_PER_MINUTE", 4, { integer: true });
+const MAX_USD_PER_CALL = positiveEnv("MAX_USD_PER_CALL", 0.02);
 
 // --- did:key ----------------------------------------------------------------
 
@@ -204,10 +215,12 @@ async function roomHead(room) {
 
 function createPayingFetch(privateKey) {
   const account = privateKeyToAccount(privateKey);
-  const client = new x402Client().register(
-    PAYMENT_NETWORK,
-    new ExactEvmScheme(account),
-  );
+  // The per-call cap is enforced on the amount the server actually asks for,
+  // before anything is signed. The usd figures in parseRequest are only
+  // estimates for the daily budget and cannot catch a price change.
+  const client = new x402Client()
+    .register(PAYMENT_NETWORK, new ExactEvmScheme(account))
+    .setSpendControls({ maxAmountPerPayment: `$${MAX_USD_PER_CALL}` });
   return { account, fetchWithPay: wrapFetchWithPayment(fetch, client) };
 }
 
