@@ -47,6 +47,9 @@ function prune() {
 }
 
 async function takeSample() {
+  // The slot comes from when the tick fired, not from when the RPC answered,
+  // so RPC latency can never push two ticks into the same slot.
+  const slot = Math.floor(Date.now() / SAMPLE_INTERVAL_MS);
   try {
     const data = await getGasData();
     const sample = {
@@ -62,9 +65,15 @@ async function takeSample() {
 
     // Persistence failing must not lose the sample we just took or stop the
     // loop: the in-memory buffer is still correct, only durability is degraded.
-    store.append(sample, RETENTION_HOURS).catch((error) => {
-      console.error("[history] persist failed:", error.message);
-    });
+    // Only the instance that claims the slot persists it (see store.claimSlot).
+    // If the claim itself fails, persist anyway: a rare duplicate beats a gap.
+    store
+      .claimSlot(slot, Math.ceil((SAMPLE_INTERVAL_MS * 2) / 1000))
+      .catch(() => true)
+      .then((claimed) => (claimed ? store.append(sample, RETENTION_HOURS) : undefined))
+      .catch((error) => {
+        console.error("[history] persist failed:", error.message);
+      });
   } catch (error) {
     // A failed sample must never crash the sampler loop: a transient RPC error
     // would otherwise silently kill history collection for the whole process.
@@ -104,8 +113,11 @@ export async function startSampler() {
     );
   }
 
-  // Take one immediately so the buffer is never empty after boot.
-  takeSample();
+  // Take one immediately so the buffer is never empty after boot, unless the
+  // restored history already holds a reading from the last half interval
+  // (a redeploy), which this one would only duplicate.
+  const last = samples.at(-1);
+  if (!last || Date.now() - last.t >= SAMPLE_INTERVAL_MS / 2) takeSample();
   const timer = setInterval(takeSample, SAMPLE_INTERVAL_MS);
   timer.unref?.();
 

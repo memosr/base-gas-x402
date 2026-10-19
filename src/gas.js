@@ -156,7 +156,12 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
       usd: weiToUsd(transferCostWei, ethUsd),
     },
     // Ready to pass to a wallet or viem's sendTransaction, in wei.
-    suggestedFees: suggestFees(baseFeePerGas, { low: lowPriority, medium: mediumPriority, high: highPriority }),
+    // Null when the block carries no base fee: 2 x 0 would advertise a
+    // maxFeePerGas that cannot get a transaction included.
+    suggestedFees:
+      block.baseFeePerGas == null
+        ? null
+        : suggestFees(baseFeePerGas, { low: lowPriority, medium: mediumPriority, high: highPriority }),
     ethUsd: ethUsdBlock(ethUsd),
     fetchedAt: new Date().toISOString(),
   };
@@ -164,8 +169,8 @@ export async function getGasData(gasLimit = TRANSFER_GAS_LIMIT) {
 
 // maxFeePerGas = 2 x baseFee + priority, the usual EIP-1559 headroom. It is a
 // ceiling, not a price: the chain charges baseFee + priority and refunds the
-// rest. On Base the base fee moves at most about 2% per block, so 2x covers a
-// long run of full blocks before a transaction would get stuck.
+// rest. 2x leaves room for a long run of full blocks before a transaction
+// would get stuck, which is the usual wallet default for the same reason.
 export const MAX_FEE_BASE_MULTIPLIER = 2n;
 
 export function suggestFees(baseFeePerGas, tiers) {

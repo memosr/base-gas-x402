@@ -85,3 +85,22 @@ export async function append(sample, retentionHours) {
   await redis(["ZADD", KEY, sample.t, JSON.stringify(sample)]);
   await redis(["ZREMRANGEBYSCORE", KEY, "-inf", `(${cutoff}`]);
 }
+
+/**
+ * Claims one sampling slot so only one instance persists a sample for it.
+ *
+ * During a Railway deploy the old and new instance run side by side for a few
+ * minutes and both sample, which wrote two rows for the same 5 minutes and
+ * double-weighted those minutes in every hourly average. SET NX makes the
+ * first instance to reach a slot its only writer; the key expires on its own.
+ * Without Redis there is only one buffer, so every slot is ours.
+ *
+ * @param {number} slot Sampling slot number (time / interval).
+ * @param {number} ttlSeconds How long the claim lives, a couple of intervals.
+ * @returns {Promise<boolean>} true when this instance should persist the slot.
+ */
+export async function claimSlot(slot, ttlSeconds) {
+  if (!isEnabled) return true;
+  const result = await redis(["SET", `${KEY}:slot:${slot}`, "1", "NX", "EX", ttlSeconds]);
+  return result === "OK";
+}

@@ -69,6 +69,12 @@ function positiveEnv(name, fallback, { integer = false } = {}) {
 const MAX_USD_PER_DAY = positiveEnv("MAX_USD_PER_DAY", 1);
 const MAX_ANSWERS_PER_MINUTE = positiveEnv("MAX_ANSWERS_PER_MINUTE", 4, { integer: true });
 const MAX_USD_PER_CALL = positiveEnv("MAX_USD_PER_CALL", 0.02);
+// USDC has 6 decimals. A smaller cap cannot be expressed, and String(1e-7) is
+// "1e-7", which the x402 client would reject on every payment.
+if (MAX_USD_PER_CALL < 0.000001) {
+  throw new Error(`MAX_USD_PER_CALL must be at least 0.000001 (1 USDC unit), got ${MAX_USD_PER_CALL}`);
+}
+const MAX_USD_PER_CALL_TEXT = MAX_USD_PER_CALL.toFixed(6);
 
 // --- did:key ----------------------------------------------------------------
 
@@ -217,11 +223,17 @@ function createPayingFetch(privateKey) {
   const account = privateKeyToAccount(privateKey);
   // The per-call cap is enforced on the amount the server actually asks for,
   // before anything is signed. The usd figures in parseRequest are only
-  // estimates for the daily budget and cannot catch a price change.
+  // conservative estimates used to decide whether to try at all.
+  const signed = { usd: null };
   const client = new x402Client()
     .register(PAYMENT_NETWORK, new ExactEvmScheme(account))
-    .setSpendControls({ maxAmountPerPayment: `$${MAX_USD_PER_CALL}` });
-  return { account, fetchWithPay: wrapFetchWithPayment(fetch, client) };
+    .setSpendControls({ maxAmountPerPayment: `$${MAX_USD_PER_CALL_TEXT}` })
+    // Record what was actually signed (USDC, 6 decimals), so the daily budget
+    // counts real spend rather than the estimate.
+    .onAfterPaymentCreation(async ({ selectedRequirements }) => {
+      signed.usd = Number(selectedRequirements.amount) / 1e6;
+    });
+  return { account, signed, fetchWithPay: wrapFetchWithPayment(fetch, client) };
 }
 
 // --- Request parsing --------------------------------------------------------
@@ -331,7 +343,7 @@ async function main() {
   const buyerKey = BUYER_PRIVATE_KEY.startsWith("0x")
     ? BUYER_PRIVATE_KEY
     : `0x${BUYER_PRIVATE_KEY}`;
-  const { account, fetchWithPay } = createPayingFetch(buyerKey);
+  const { account, signed, fetchWithPay } = createPayingFetch(buyerKey);
 
   console.log(`did    : ${did}`);
   console.log(`payer  : ${account.address}`);
@@ -421,22 +433,26 @@ async function main() {
       }
 
       // --- pay and answer ---
+      signed.usd = null;
       try {
         const response = await fetchWithPay(`${GAS_API}${request.path}`, {
           method: "GET",
           headers: { Accept: "application/json" },
+        }).finally(() => {
+          // Count a signed payment even if the request then fails: the money
+          // may already be on its way.
+          if (signed.usd !== null) spentToday += signed.usd;
         });
         if (!response.ok) throw new Error(`gas API returned ${response.status}`);
 
         const data = await response.json();
-        spentToday += request.usd;
         recentAnswers.push(now);
 
         const answer =
           request.kind === "compare" ? formatCompare(data) : formatGas(data);
 
         await saySigned(key, did, ROOM, `@${addressee(from)} ${answer}`);
-        console.log(`[answered] seq ${seq} (${request.kind}, $${request.usd})`);
+        console.log(`[answered] seq ${seq} (${request.kind}, paid $${signed.usd ?? "?"}, today $${spentToday.toFixed(4)})`);
       } catch (error) {
         console.error(`[answer] seq ${seq} failed:`, error.message);
         await saySigned(

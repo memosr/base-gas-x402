@@ -557,9 +557,9 @@ const OPENAPI_DOCUMENT = {
                       },
                     },
                     suggestedFees: {
-                      type: "object",
+                      type: ["object", "null"],
                       description:
-                        "EIP-1559 fee fields ready to pass to a wallet or viem sendTransaction, as wei strings. maxFeePerGas is 2 x baseFee + priority: a ceiling, not the price; the chain charges baseFee + priority and refunds the rest. Pick medium unless the transaction is urgent (high) or can wait (low).",
+                        "EIP-1559 fee fields ready to pass to a wallet or viem sendTransaction, as wei strings. Null only if the latest block carries no base fee. maxFeePerGas is 2 x baseFee + priority: a ceiling, not the price; the chain charges baseFee + priority and refunds the rest. Pick medium unless the transaction is urgent (high) or can wait (low).",
                       properties: {
                         unit: { type: "string", example: "wei" },
                         basis: { type: "string" },
