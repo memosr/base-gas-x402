@@ -208,7 +208,7 @@ const WINDOW_OUTPUT_EXAMPLE = {
   savingsVsAveragePercent: 1.1,
   avoidHoursUtc: [],
   savingsUsd: { gasLimit: 21000, vsPriciestHour: "0.000066", vsAverageHour: "0.000004" },
-  confidence: "high",
+  confidence: "pattern",
   hourlyAverages: [
     { hourUtc: 6, samples: 84, avgGasPrice: 0.006 },
     { hourUtc: 2, samples: 84, avgGasPrice: 0.0073 },
