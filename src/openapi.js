@@ -33,7 +33,7 @@ export const OPENAPI_DOCUMENT = {
     "/gas": {
       get: {
         summary:
-          "Live Base gas oracle: base fee, priority fee tiers, and transaction cost in USD (paid via x402)",
+          "Returns the current gas price on Base and what a transaction costs in USD right now, plus ready-to-sign maxFeePerGas",
         description:
           `Returns live Base mainnet (Base L2, Coinbase Base) gas data read directly from the chain: EIP-1559 base fee per gas, low/medium/high priority fee tiers, current gas price in gwei, and an estimated transaction cost for any gas limit in gwei, ETH and US dollars (ETH/USD from the Chainlink feed on Base). Common uses: check current gas fees on Base, get the Base network gas price before sending a transaction, estimate transaction cost on Base mainnet, price a Uniswap swap or NFT mint on Base, find a cheap time to transact on Base L2, monitor Base network congestion, budget gas spending for an on-chain agent, and compare Base gas costs to other L2 networks. Each call costs ${GAS_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402. No API key or subscription required.`,
         operationId: "getGas",
@@ -172,7 +172,7 @@ export const OPENAPI_DOCUMENT = {
     "/gas/compare": {
       get: {
         summary:
-          "Compare live gas costs across Base, OP Mainnet, Arbitrum, and Ethereum (paid via x402)",
+          "Compares what the same transaction costs right now on Base, Optimism, Arbitrum and Ethereum in USD and names the cheapest chain",
         description:
           `Compares live gas costs across Base, OP Mainnet, Arbitrum One, and Ethereum in a single call, ranked cheapest first. Returns each chain's EIP-1559 base fee, current gas price in gwei, and estimated cost for a given gas limit in ETH and US dollars, plus which chain is cheapest right now and how many times cheaper Base is than Ethereum. Common uses: pick the cheapest chain for a transaction, decide whether bridging to Base is worth it, compare L2 fees across networks, route agent transactions to the lowest-cost chain, and monitor relative congestion between L2s. Chains that fail to respond are listed under "unavailable" rather than failing the whole request. Each call costs ${COMPARE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
         operationId: "compareGas",
@@ -293,7 +293,7 @@ export const OPENAPI_DOCUMENT = {
     "/gas/history": {
       get: {
         summary:
-          "Historical Base gas prices with trend statistics and a cheap/normal/expensive verdict (paid via x402)",
+          "Tells you if Base gas is high or low right now versus the last day or week, with a cheap/normal/expensive verdict",
         description:
           `Returns historical Base mainnet gas prices over a lookback window, sampled continuously from the chain, together with min, max, average, and median gas price for that window and a verdict on whether gas is currently cheap, normal, or expensive relative to it. A live RPC call reports the current price but cannot say whether it is high or low; this endpoint can, because it has been watching. Common uses: decide whether to transact now or wait, detect congestion spikes on Base, chart Base gas trends over time, set gas budgets from real observed data, and backtest agent transaction timing. Every response includes a coverage object stating exactly how much history backs it. Check the free GET /health route first to see current coverage. Each call costs ${HISTORY_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
         operationId: "getGasHistory",
@@ -399,7 +399,7 @@ export const OPENAPI_DOCUMENT = {
     "/gas/cheapest-window": {
       get: {
         summary:
-          "Cheapest hours of day to transact on Base, from observed gas history (paid via x402)",
+          "Finds the best time of day to send a transaction on Base, the hours to avoid, and what waiting saves in USD",
         description:
           `Identifies the cheapest hours of day to transact on Base, computed from continuously collected gas history. Returns average gas price bucketed by hour of day in UTC and ranked cheapest first, plus the cheapest hour, the priciest hour, and the percentage saved by waiting for the cheap window. Common uses: schedule batch transactions for cheap gas, time an NFT mint or airdrop, plan agent workloads around low-fee hours, cut gas spend on recurring on-chain jobs, and answer when should I send this transaction. This cannot be derived from a single RPC call at any price, because it requires historical observation. Every response includes a coverage object; with less than a full day of history the hourly ranking is provisional. Check the free GET /health route first. Each call costs ${WINDOW_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
         operationId: "getCheapestWindow",

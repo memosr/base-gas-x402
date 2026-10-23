@@ -142,7 +142,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
       // Short on purpose: see the size note on /gas/history below. The
       // discovery-driving copy lives in the OpenAPI document instead.
       description:
-        "Live Base mainnet gas oracle: EIP-1559 base fee, low/medium/high priority tiers, ready-to-sign maxFeePerGas, and the cost of any transaction in USD and ETH.",
+        "Current gas price on Base and what a transaction costs in USD right now: base fee, priority tiers, ready-to-sign maxFeePerGas.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
       iconUrl: ICON_URL,
@@ -182,7 +182,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         payTo: PAY_TO_ADDRESS,
       },
       description:
-        "Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum in one call, in USD and ETH, ranked cheapest first.",
+        "What the same transaction costs right now on Base, Optimism, Arbitrum and Ethereum, in USD, cheapest chain first.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
       iconUrl: ICON_URL,
@@ -231,7 +231,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
       // that actually drives discovery lives in the OpenAPI document, which is
       // not part of the payment payload.
       description:
-        "Base gas history sampled every 5 minutes: time series, min/max/average/median, and whether gas is cheap, normal, expensive or flat right now.",
+        "Is Base gas high or low right now? Up to 7 days of history every 5 min, min/max/avg/median, cheap/normal/expensive verdict.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
       iconUrl: ICON_URL,
@@ -267,7 +267,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         payTo: PAY_TO_ADDRESS,
       },
       description:
-        "When to transact on Base, from 7 days of gas history: the hours to avoid, the cheapest hour in UTC, and the saving in percent and USD.",
+        "Best time of day to send a transaction on Base: hours to avoid, cheapest hour (UTC), and what waiting saves in USD.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
       iconUrl: ICON_URL,
