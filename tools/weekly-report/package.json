@@ -1,0 +1,20 @@
+{
+  "name": "base-gas-weekly-report",
+  "private": true,
+  "type": "module",
+  "description": "Builds the weekly Base gas report (chart + post text) from the paid history API.",
+  "scripts": {
+    "report": "node report.mjs",
+    "test": "node --test report.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
+    "dotenv": "^17.4.2",
+    "viem": "^2.57.10"
+  }
+}
