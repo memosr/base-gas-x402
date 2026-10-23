@@ -23,16 +23,12 @@ const BUILDER_CODE_VALUE = process.env.BUILDER_CODE || "bc_lhfd8zad";
 
 // Output shape advertised to Bazaar crawlers so agents know what they'll get.
 const GAS_OUTPUT_EXAMPLE = {
-  chain: "base-mainnet",
   chainId: 8453,
-  blockNumber: "37012345",
   baseFeePerGas: "0.005",
   priorityFeePerGas: { low: "0.000486", medium: "0.00101", high: "0.0064" },
   gasPrice: "0.006",
   estimatedTransferCost: { gasLimit: 21000, gwei: "126.21", eth: "0.00000012621", usd: "0.0003069" },
   suggestedFees: { unit: "wei", medium: { maxFeePerGas: "11010000", maxPriorityFeePerGas: "1010000" } },
-  ethUsd: { price: "2431.78", source: "chainlink-eth-usd-base" },
-  fetchedAt: "2026-10-17T12:00:00.000Z",
 };
 
 const COMPARE_OUTPUT_EXAMPLE = {
@@ -70,26 +66,61 @@ const HISTORY_OUTPUT_EXAMPLE = {
 // Mirrors a real 7-day Base window: gas sits on its floor, so timing saves
 // about 1%. An earlier example showed 73.7%, which no real window produced.
 const WINDOW_OUTPUT_EXAMPLE = {
-  chain: "base-mainnet",
-  chainId: 8453,
   requestedHours: 168,
-  units: "gwei",
   hasDailyCycle: false,
   recommendation:
     "No meaningful daily gas cycle in this window. Timing a transaction by hour of day would not have saved anything here.",
   savingsVsAveragePercent: 1.1,
   avoidHoursUtc: [],
-  savingsUsd: { gasLimit: 21000, vsPriciestHour: "0.000066", vsAverageHour: "0.000004" },
   confidence: "pattern",
-  hourlyAverages: [
-    { hourUtc: 6, samples: 84, avgGasPrice: 0.006 },
-    { hourUtc: 2, samples: 84, avgGasPrice: 0.0073 },
-  ],
   cheapestHourUtc: 6,
-  priciestHourUtc: 2,
-  coverage: { samples: 2016, hoursCovered: 168, retentionHours: 168 },
-  fetchedAt: "2026-10-18T12:00:00.000Z",
 };
+
+// Compact output schemas for Bazaar. Bazaar ranks search results partly on how
+// complete a resource's description and output schema are, so each route
+// declares the top-level shape. Kept terse: these ride in the 402 header too.
+const obj = (properties) => ({ type: "object", properties });
+const S = { type: "string" };
+const N = { type: "number" };
+const I = { type: "integer" };
+
+const GAS_OUTPUT_SCHEMA = obj({
+  chainId: I,
+  baseFeePerGas: S,
+  priorityFeePerGas: obj({ low: S, medium: S, high: S }),
+  gasPrice: S,
+  estimatedTransferCost: obj({ gasLimit: I, gwei: S, eth: S, usd: S }),
+  suggestedFees: { type: ["object", "null"] },
+  ethUsd: { type: ["object", "null"] },
+});
+
+const COMPARE_OUTPUT_SCHEMA = obj({
+  gasLimit: I,
+  chains: { type: "array" },
+  cheapest: S,
+  baseRank: I,
+  baseVsEthereum: S,
+});
+
+const HISTORY_OUTPUT_SCHEMA = obj({
+  requestedHours: I,
+  currentGasPrice: N,
+  verdict: { type: ["string", "null"], enum: ["cheap", "normal", "expensive", "flat", null] },
+  summary: obj({ min: N, max: N, avg: N, median: N }),
+  samples: { type: "array" },
+});
+
+const WINDOW_OUTPUT_SCHEMA = obj({
+  hasDailyCycle: { type: "boolean" },
+  recommendation: S,
+  savingsVsAveragePercent: N,
+  avoidHoursUtc: { type: "array" },
+  cheapestHourUtc: I,
+  confidence: { type: "string", enum: ["single-day", "provisional", "pattern"] },
+});
+
+// Shown next to the listing in Bazaar-backed directories.
+const ICON_URL = "https://base-gas-x402.vercel.app/icon-512.png";
 
 /**
  * @param {string} PAY_TO_ADDRESS Where every payment settles.
@@ -114,6 +145,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         "Live Base mainnet gas oracle: EIP-1559 base fee, low/medium/high priority tiers, ready-to-sign maxFeePerGas, and the cost of any transaction in USD and ETH.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
+      iconUrl: ICON_URL,
       tags: ["gas", "gas price", "gas oracle", "base", "base-l2", "onchain-data"],
       // Bazaar discovery extension (preserved) + Base Builder Code attribution.
       extensions: {
@@ -131,12 +163,12 @@ export function buildRoutes(PAY_TO_ADDRESS) {
                 maximum: Number(MAX_GAS_LIMIT),
                 default: 21000,
                 description:
-                  "Gas units to price the cost estimate against. Defaults to 21000 (a plain ETH transfer). Use ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, or ~1500000 for a contract deploy.",
+                  "Gas units to price. 21000 ETH transfer (default), 65000 ERC-20, 85000 NFT mint, 180000 swap, 1500000 deploy.",
               },
             },
             required: [],
           },
-          output: { example: GAS_OUTPUT_EXAMPLE },
+          output: { example: GAS_OUTPUT_EXAMPLE, schema: GAS_OUTPUT_SCHEMA },
         }),
         [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
       },
@@ -153,6 +185,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         "Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum in one call, in USD and ETH, ranked cheapest first.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
+      iconUrl: ICON_URL,
       tags: [
         "gas comparison",
         "cross-chain",
@@ -178,7 +211,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
             },
             required: [],
           },
-          output: { example: COMPARE_OUTPUT_EXAMPLE },
+          output: { example: COMPARE_OUTPUT_EXAMPLE, schema: COMPARE_OUTPUT_SCHEMA },
         }),
         [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
       },
@@ -201,6 +234,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         "Base gas history sampled every 5 minutes: time series, min/max/average/median, and whether gas is cheap, normal, expensive or flat right now.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
+      iconUrl: ICON_URL,
       tags: ["gas history", "gas trend", "base", "base-l2", "onchain-data"],
       extensions: {
         ...declareDiscoveryExtension({
@@ -219,7 +253,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
             },
             required: [],
           },
-          output: { example: HISTORY_OUTPUT_EXAMPLE },
+          output: { example: HISTORY_OUTPUT_EXAMPLE, schema: HISTORY_OUTPUT_SCHEMA },
         }),
         [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
       },
@@ -236,6 +270,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
         "When to transact on Base, from 7 days of gas history: the hours to avoid, the cheapest hour in UTC, and the saving in percent and USD.",
       mimeType: "application/json",
       serviceName: "base-gas-x402",
+      iconUrl: ICON_URL,
       tags: [
         "gas timing",
         "cheapest time to transact",
@@ -261,7 +296,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
             },
             required: [],
           },
-          output: { example: WINDOW_OUTPUT_EXAMPLE },
+          output: { example: WINDOW_OUTPUT_EXAMPLE, schema: WINDOW_OUTPUT_SCHEMA },
         }),
         [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
       },
