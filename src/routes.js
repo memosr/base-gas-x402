@@ -23,11 +23,9 @@ const BUILDER_CODE_VALUE = process.env.BUILDER_CODE || "bc_lhfd8zad";
 
 // Output shape advertised to Bazaar crawlers so agents know what they'll get.
 const GAS_OUTPUT_EXAMPLE = {
-  chainId: 8453,
   baseFeePerGas: "0.005",
   priorityFeePerGas: { low: "0.000486", medium: "0.00101", high: "0.0064" },
-  gasPrice: "0.006",
-  estimatedTransferCost: { gasLimit: 21000, gwei: "126.21", eth: "0.00000012621", usd: "0.0003069" },
+  estimatedTransferCost: { gasLimit: 21000, eth: "0.00000012621", usd: "0.0003069" },
   suggestedFees: { unit: "wei", medium: { maxFeePerGas: "11010000", maxPriorityFeePerGas: "1010000" } },
 };
 
@@ -85,13 +83,10 @@ const N = { type: "number" };
 const I = { type: "integer" };
 
 const GAS_OUTPUT_SCHEMA = obj({
-  chainId: I,
   baseFeePerGas: S,
-  priorityFeePerGas: obj({ low: S, medium: S, high: S }),
-  gasPrice: S,
-  estimatedTransferCost: obj({ gasLimit: I, gwei: S, eth: S, usd: S }),
-  suggestedFees: { type: ["object", "null"] },
-  ethUsd: { type: ["object", "null"] },
+  priorityFeePerGas: { type: "object" },
+  estimatedTransferCost: obj({ gasLimit: I, eth: S, usd: S }),
+  suggestedFees: { type: "object" },
 });
 
 const COMPARE_OUTPUT_SCHEMA = obj({
@@ -122,12 +117,43 @@ const WINDOW_OUTPUT_SCHEMA = obj({
 // Shown next to the listing in Bazaar-backed directories.
 const ICON_URL = "https://base-gas-x402.vercel.app/icon-512.png";
 
+// Body of the unpaid 402. The payment terms ride in the PAYMENT-REQUIRED
+// header; this body is for the agent (or person) reading the response, so it
+// says what the route costs, how to pay, and that a failed call is never
+// charged. It is not part of the header, so it does not count toward the
+// facilitator's payload size limit.
+const SITE = "https://base-gas-x402.vercel.app";
+function unpaidBody(path, price, what) {
+  return (context) => {
+    const host = context?.adapter?.getHeader?.("host");
+    const origin = host ? `https://${host}` : "https://base-gas-x402-production.up.railway.app";
+    return {
+      contentType: "application/json",
+      body: {
+        error: "payment_required",
+        message: `GET ${path} returns ${what}. It costs ${price} in USDC on Base (eip155:8453), paid per call over x402. The payment terms are in the PAYMENT-REQUIRED header.`,
+        price,
+        noChargeOnFailure: "Payment settles only after a successful response. A request that fails (4xx or 5xx) is never charged.",
+        howToPay: {
+          agentcash: `npx agentcash@latest fetch "${origin}${path}"`,
+          mcpServer: "npx -y base-gas-mcp",
+          agentSkill: "npx skills add memosr/base-gas-skill --all --yes",
+        },
+        free: { health: `${origin}/health`, routesAndPrices: `${origin}/info`, openapi: `${origin}/openapi.json` },
+        docs: SITE,
+        support: "https://github.com/memosr/base-gas-x402/issues",
+      },
+    };
+  };
+}
+
 /**
  * @param {string} PAY_TO_ADDRESS Where every payment settles.
  */
 export function buildRoutes(PAY_TO_ADDRESS) {
   return {
     "GET /gas": {
+      unpaidResponseBody: unpaidBody("/gas", GAS_PRICE, "the current Base gas price, the cost of a transaction in USD and ready-to-sign fees"),
       accepts: {
         scheme: "exact",
         network: PAYMENT_NETWORK,
@@ -175,6 +201,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
     },
 
     "GET /gas/compare": {
+      unpaidResponseBody: unpaidBody("/gas/compare", COMPARE_PRICE, "what the same transaction costs right now on Base, Optimism, Arbitrum and Ethereum"),
       accepts: {
         scheme: "exact",
         network: PAYMENT_NETWORK,
@@ -218,6 +245,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
     },
 
     "GET /gas/history": {
+      unpaidResponseBody: unpaidBody("/gas/history", HISTORY_PRICE, "Base gas history with a cheap/normal/expensive verdict for right now"),
       accepts: {
         scheme: "exact",
         network: PAYMENT_NETWORK,
@@ -260,6 +288,7 @@ export function buildRoutes(PAY_TO_ADDRESS) {
     },
 
     "GET /gas/cheapest-window": {
+      unpaidResponseBody: unpaidBody("/gas/cheapest-window", WINDOW_PRICE, "the best time of day to transact on Base and what waiting saves"),
       accepts: {
         scheme: "exact",
         network: PAYMENT_NETWORK,

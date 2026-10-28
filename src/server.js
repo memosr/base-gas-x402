@@ -72,7 +72,6 @@ const app = express();
 // Trusting the proxy makes Express read X-Forwarded-Proto, so req.protocol
 // becomes "https" and the advertised resource URL matches reality.
 app.set("trust proxy", true);
-app.use(express.json());
 
 // --- x402 wiring --------------------------------------------------------
 // The Coinbase CDP facilitator config carries the production facilitator URL
@@ -434,6 +433,24 @@ app.get("/gas/cheapest-window", async (req, res) => {
       error: "Failed to compute cheapest window",
     });
   }
+});
+
+// Unknown routes answer in JSON, not Express's HTML page: the callers here
+// are agents, and a list of what does exist is the useful reply.
+app.use((req, res) => {
+  res.status(404).json({
+    error: "not_found",
+    message: `No route ${req.method} ${req.path}.`,
+    routes: {
+      "GET /gas": GAS_PRICE,
+      "GET /gas/compare": COMPARE_PRICE,
+      "GET /gas/history": HISTORY_PRICE,
+      "GET /gas/cheapest-window": WINDOW_PRICE,
+      "GET /health": "free",
+      "GET /info": "free",
+      "GET /openapi.json": "free",
+    },
+  });
 });
 
 app.listen(PORT, () => {

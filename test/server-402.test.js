@@ -2,6 +2,18 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import http from "node:http";
+
+function getWithHost(path, host) {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ host: "127.0.0.1", port: PORT, path, headers: { Host: host, "X-Forwarded-Proto": "https" } }, (res) => {
+        res.resume();
+        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers }));
+      })
+      .on("error", reject);
+  });
+}
 
 // Boots the real server (facilitator stubbed) and checks the x402 contract.
 //
@@ -46,9 +58,12 @@ after(() => server?.kill());
 
 for (const route of ["/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window"]) {
   test(`${route}: 402 without payment, Base USDC terms, payload under ${MAX_402_HEADER_BYTES} bytes`, async () => {
-    const res = await fetch(`http://127.0.0.1:${PORT}${route}`);
+    // Measured as production sees it: the long Railway host ends up in the
+    // header's resource URL, which a 127.0.0.1 request would understate.
+    // fetch() cannot set Host, so this goes through node:http.
+    const res = await getWithHost(route, "base-gas-x402-production.up.railway.app");
     assert.equal(res.status, 402);
-    const header = res.headers.get("payment-required");
+    const header = res.headers["payment-required"];
     assert.ok(header, "payment-required header missing");
     assert.ok(header.length < MAX_402_HEADER_BYTES, `${header.length} bytes`);
     const body = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
@@ -112,4 +127,22 @@ test("free routes allow cross-origin reads, paid routes do not", async () => {
   }
   const paid = await fetch(`http://127.0.0.1:${PORT}/gas`);
   assert.equal(paid.headers.get("access-control-allow-origin"), null);
+});
+
+test("the unpaid 402 body explains the price, how to pay, and that failures are free", async () => {
+  const res = await fetch(`http://127.0.0.1:${PORT}/gas`, { headers: { Accept: "application/json" } });
+  assert.equal(res.status, 402);
+  const body = await res.json();
+  assert.equal(body.error, "payment_required");
+  assert.match(body.price, /^\$\d/);
+  assert.match(body.noChargeOnFailure, /never charged/);
+  assert.match(body.howToPay.agentcash, /agentcash@latest fetch ".*\/gas"/);
+});
+
+test("unknown routes answer JSON 404 listing the real routes", async () => {
+  const res = await fetch(`http://127.0.0.1:${PORT}/nope`);
+  assert.equal(res.status, 404);
+  assert.match(res.headers.get("content-type"), /json/);
+  const body = await res.json();
+  assert.ok(body.routes["GET /gas"]);
 });
