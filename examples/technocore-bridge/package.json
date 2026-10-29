@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node bridge.js",
     "setup": "node setup.js",
-    "announce": "node announce.js"
+    "announce": "node announce.js",
+    "test": "node --check bridge.js && node --test bridge.test.mjs"
   },
   "license": "MIT",
   "dependencies": {

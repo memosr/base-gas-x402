@@ -8,19 +8,39 @@ USDC** on Base mainnet, settled through the Coinbase CDP production
 facilitator. No API keys, accounts, or subscriptions for callers, just an
 on-chain micropayment per request.
 
-## What's new (September 2026)
+## What's new (October 2026)
 
-- **Costs in dollars.** `/gas` and `/gas/compare` now return `usd` next to gwei
-  and ETH, priced from the Chainlink ETH/USD feed on Base. If the feed is
-  unavailable the field is `null` and the rest of the response is unchanged.
-- **Hours to avoid.** `/gas/cheapest-window` now returns `avoidHoursUtc`, the
-  saving versus the average hour (`savingsVsAveragePercent`) and both savings in
-  USD (`savingsUsd`). Seven days of data show a real daily cycle on Base, driven
-  mostly by one or two spiky hours, so the honest everyday saving is small and
-  the answer says so.
-- **Faster, lighter reads.** Callers within the same 2-second Base block share
-  one RPC read.
-- **`/gas/history` is $0.01.**
+- **Ready-to-sign fees.** `/gas` returns `suggestedFees`: `maxFeePerGas` and
+  `maxPriorityFeePerGas` per tier, in wei, ready to pass to a wallet or viem.
+- **Never charged for a failure.** Payment settles only after a successful
+  response; a request that ends in 4xx or 5xx is not charged. The unpaid 402
+  now says so in its body, with the price and how to pay.
+- **More ways in.** An MCP server (`base-gas-mcp`), an agent skill, and an
+  elizaOS plugin (`@memosr/plugin-base-gas`), all with a fixed payee and a
+  per-call spend cap.
+- **`/gas` is $0.002.**
+
+## Trust and reliability
+
+- **Who runs it.** Built and operated by one developer,
+  [@memosr](https://github.com/memosr). The code is MIT licensed and is
+  exactly what runs in production.
+- **Where the money goes.** Every payment settles in USDC on Base to
+  `0x0D083590c048A243e24a75E3a7C968145DE25B44`, through the Coinbase CDP
+  facilitator. The address is in every 402 challenge and never changes per
+  request.
+- **Failed calls are free.** If the handler answers 4xx or 5xx (bad input, an
+  RPC outage), the payment is cancelled before settlement.
+- **Independent uptime record.** [Agent Economy Report](https://agenteconomy.report/s/base-gas-x402-production.up.railway.app)
+  probes the service daily and publishes uptime, payers and settlement. The
+  free `GET /health` reports live status and history coverage.
+- **Where the data comes from.** Base mainnet RPC reads (`eth_feeHistory`,
+  `eth_gasPrice`, latest block) and the Chainlink ETH/USD feed on Base. Nothing
+  is estimated by a model. RPCs fail over in order; the answering one is named
+  in `rpcSource`.
+- **Problems.** Open an issue at
+  [github.com/memosr/base-gas-x402/issues](https://github.com/memosr/base-gas-x402/issues).
+  Security reports: see [SECURITY.md](SECURITY.md).
 
 ## How it works
 
