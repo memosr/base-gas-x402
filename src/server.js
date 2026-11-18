@@ -161,6 +161,15 @@ app.get("/health", (req, res) => {
   });
 });
 
+// --- AgentCharts claim file ---------------------------------------------
+// Free, before the paywall. Read per request so a redeploy with a new proof
+// is the only change needed. Unset (or blank) falls through to the JSON 404.
+app.get("/.well-known/agentcharts.txt", (_req, res, next) => {
+  const proof = process.env.AGENTCHARTS_PROOF?.trim();
+  if (!proof) return next();
+  res.type("text/plain").send(proof);
+});
+
 // JSON service description for programmatic clients (was previously at GET /).
 app.get("/info", (_req, res) => {
   res.json({
