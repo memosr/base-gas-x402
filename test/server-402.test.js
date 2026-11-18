@@ -56,8 +56,8 @@ before(async () => {
 
 after(() => server?.kill());
 
-for (const route of ["/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window"]) {
-  test(`${route}: 402 without payment, Base USDC terms, payload under ${MAX_402_HEADER_BYTES} bytes`, async () => {
+for (const route of ["/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window", "/gas/advice"]) {
+  test(`${route}: 402 without payment, Base USDC terms, payload under ${MAX_402_HEADER_BYTES} bytes`, async (t) => {
     // Measured as production sees it: the long Railway host ends up in the
     // header's resource URL, which a 127.0.0.1 request would understate.
     // fetch() cannot set Host, so this goes through node:http.
@@ -66,6 +66,7 @@ for (const route of ["/gas", "/gas/compare", "/gas/history", "/gas/cheapest-wind
     const header = res.headers["payment-required"];
     assert.ok(header, "payment-required header missing");
     assert.ok(header.length < MAX_402_HEADER_BYTES, `${header.length} bytes`);
+    t.diagnostic(`402 header ${route}: ${header.length} bytes`);
     const body = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
     const [accept] = body.accepts;
     assert.equal(accept.network, "eip155:8453");
@@ -104,7 +105,7 @@ test("paid requests are rate limited per client before the paywall", async () =>
 // HEAD on a paid route used to bypass the paywall and run the handler unpaid
 // (x402 SDK bug, fixed upstream in x402-foundation/x402#3796).
 for (const route of [
-  "/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window",
+  "/gas", "/gas/compare", "/gas/history", "/gas/cheapest-window", "/gas/advice",
   // Express matches these to the same handlers (case-insensitive, trailing slash).
   "/GAS", "/gas/", "/Gas/Compare", "/gas/history/", "/GAS/CHEAPEST-WINDOW//",
 ]) {

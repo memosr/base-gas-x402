@@ -23,10 +23,12 @@ import {
   COMPARE_PRICE,
   HISTORY_PRICE,
   WINDOW_PRICE,
+  ADVICE_PRICE,
   MIN_HOURS,
   MAX_HOURS,
 } from "./pricing.js";
 import { buildRoutes } from "./routes.js";
+import { buildAdvice } from "./advice.js";
 import { OPENAPI_DOCUMENT } from "./openapi.js";
 import { LANDING_PAGE_HTML, FAVICON_SVG } from "./landing.js";
 
@@ -172,6 +174,7 @@ app.get("/info", (_req, res) => {
       "GET /gas/compare": `Live gas comparison across Base, OP Mainnet, Arbitrum One, and Ethereum. Costs ${COMPARE_PRICE} per call via x402 on Base mainnet (${PAYMENT_NETWORK}).`,
       "GET /gas/history": `Historical Base gas prices with trend statistics and a cheap/normal/expensive verdict. Costs ${HISTORY_PRICE} per call.`,
       "GET /gas/cheapest-window": `Cheapest hours of day to transact on Base, from observed history. Costs ${WINDOW_PRICE} per call.`,
+      "GET /gas/advice": `Send now or wait: one answer for a Base transaction, with its USD cost and ready-to-sign fees. Costs ${ADVICE_PRICE} per call.`,
       "GET /health": "Service status and gas history coverage (free).",
     },
     payment: {
@@ -183,6 +186,7 @@ app.get("/info", (_req, res) => {
         "GET /gas/compare": COMPARE_PRICE,
         "GET /gas/history": HISTORY_PRICE,
         "GET /gas/cheapest-window": WINDOW_PRICE,
+        "GET /gas/advice": ADVICE_PRICE,
       },
     },
   });
@@ -435,6 +439,22 @@ app.get("/gas/cheapest-window", async (req, res) => {
   }
 });
 
+app.get("/gas/advice", async (req, res) => {
+  const { gasLimit, error: invalid } = parseGasLimit(req.query.gasLimit);
+  if (invalid) return res.status(400).json(invalid);
+
+  try {
+    // History is in memory; only the live read can fail on the network.
+    const gas = await getGasData(gasLimit);
+    res.json(buildAdvice(gas, getHistory(24)));
+  } catch (error) {
+    console.error("[/gas/advice] failed:", error);
+    res.status(502).json({
+      error: "Failed to build gas advice",
+    });
+  }
+});
+
 // Unknown routes answer in JSON, not Express's HTML page: the callers here
 // are agents, and a list of what does exist is the useful reply.
 app.use((req, res) => {
@@ -446,6 +466,7 @@ app.use((req, res) => {
       "GET /gas/compare": COMPARE_PRICE,
       "GET /gas/history": HISTORY_PRICE,
       "GET /gas/cheapest-window": WINDOW_PRICE,
+      "GET /gas/advice": ADVICE_PRICE,
       "GET /health": "free",
       "GET /info": "free",
       "GET /openapi.json": "free",
@@ -461,6 +482,7 @@ app.listen(PORT, () => {
   console.log(`  paid:  GET /gas/compare          (${COMPARE_PRICE} via x402, ${PAYMENT_NETWORK})`);
   console.log(`  paid:  GET /gas/history          (${HISTORY_PRICE} via x402, ${PAYMENT_NETWORK})`);
   console.log(`  paid:  GET /gas/cheapest-window  (${WINDOW_PRICE} via x402, ${PAYMENT_NETWORK})`);
+  console.log(`  paid:  GET /gas/advice           (${ADVICE_PRICE} via x402, ${PAYMENT_NETWORK})`);
   console.log(
     PAID_PER_MINUTE === 0
       ? "  rate limit: off (RATE_LIMIT_PAID_PER_MIN=0)"

@@ -7,6 +7,7 @@ import {
   COMPARE_PRICE,
   HISTORY_PRICE,
   WINDOW_PRICE,
+  ADVICE_PRICE,
   MIN_HOURS,
   MAX_HOURS,
 } from "./pricing.js";
@@ -74,6 +75,18 @@ const WINDOW_OUTPUT_EXAMPLE = {
   cheapestHourUtc: 6,
 };
 
+// Trimmed to the decision fields: the full response also carries verdictNote
+// and fetchedAt, which only add bytes to the 402 header.
+const ADVICE_OUTPUT_EXAMPLE = {
+  advice: "send_now",
+  confidence: "high",
+  reason: "Base gas has not moved meaningfully in the last 24 hours, so there is nothing to wait for.",
+  waitMinutes: null,
+  now: { costUsd: "0.0003", gasLimit: 21000 },
+  verdict: "flat",
+  suggestedFees: { maxFeePerGas: "11010000", maxPriorityFeePerGas: "1010000" },
+};
+
 // Compact output schemas for Bazaar. Bazaar ranks search results partly on how
 // complete a resource's description and output schema are, so each route
 // declares the top-level shape. Kept terse: these ride in the 402 header too.
@@ -112,6 +125,16 @@ const WINDOW_OUTPUT_SCHEMA = obj({
   avoidHoursUtc: { type: "array" },
   cheapestHourUtc: I,
   confidence: { type: "string", enum: ["single-day", "provisional", "pattern"] },
+});
+
+const ADVICE_OUTPUT_SCHEMA = obj({
+  advice: { type: "string", enum: ["send_now", "wait"] },
+  confidence: { type: "string", enum: ["high", "low"] },
+  reason: S,
+  waitMinutes: { type: ["integer", "null"] },
+  now: { type: "object" },
+  verdict: { type: ["string", "null"] },
+  suggestedFees: { type: ["object", "null"] },
 });
 
 // Shown next to the listing in Bazaar-backed directories.
@@ -326,6 +349,43 @@ export function buildRoutes(PAY_TO_ADDRESS) {
             required: [],
           },
           output: { example: WINDOW_OUTPUT_EXAMPLE, schema: WINDOW_OUTPUT_SCHEMA },
+        }),
+        [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
+      },
+    },
+
+    "GET /gas/advice": {
+      unpaidResponseBody: unpaidBody("/gas/advice", ADVICE_PRICE, "a send-now or wait answer for a Base transaction, with its USD cost and ready-to-sign fees"),
+      accepts: {
+        scheme: "exact",
+        network: PAYMENT_NETWORK,
+        price: ADVICE_PRICE,
+        payTo: PAY_TO_ADDRESS,
+      },
+      description:
+        "Should I send my transaction on Base now or wait? Send-now or wait answer with the USD cost and ready-to-sign fees.",
+      mimeType: "application/json",
+      serviceName: "base-gas-x402",
+      iconUrl: ICON_URL,
+      tags: ["send or wait", "gas advice", "transaction timing", "base", "base-l2", "onchain-data"],
+      extensions: {
+        ...declareDiscoveryExtension({
+          method: "GET",
+          input: { gasLimit: 21000 },
+          inputSchema: {
+            properties: {
+              gasLimit: {
+                type: "integer",
+                minimum: Number(MIN_GAS_LIMIT),
+                maximum: Number(MAX_GAS_LIMIT),
+                default: 21000,
+                description:
+                  "Gas units of the transaction you plan to send. Defaults to 21000 (a plain ETH transfer).",
+              },
+            },
+            required: [],
+          },
+          output: { example: ADVICE_OUTPUT_EXAMPLE, schema: ADVICE_OUTPUT_SCHEMA },
         }),
         [BUILDER_CODE]: declareBuilderCodeExtension(BUILDER_CODE_VALUE),
       },

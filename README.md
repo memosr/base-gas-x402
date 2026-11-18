@@ -50,6 +50,7 @@ on-chain micropayment per request.
 | `GET /gas/compare` | $0.01 | Live gas cost across Base, OP Mainnet, Arbitrum One and Ethereum, cheapest first |
 | `GET /gas/history` | $0.01 | Gas time series, min/max/avg/median and a cheap/normal/expensive/flat verdict |
 | `GET /gas/cheapest-window` | $0.02 | Hour-of-day averages in UTC and whether timing saves anything |
+| `GET /gas/advice` | $0.003 | Send now or wait, with the USD cost and ready-to-sign fees for any `gasLimit` |
 | `GET /health` | free | Status and how much gas history has been collected |
 | `GET /info` | free | All routes and prices as JSON |
 | `GET /openapi.json` | free | OpenAPI 3.1 discovery document |
@@ -245,7 +246,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `BASE_MAINNET_RPC_URL` | No | Primary Base mainnet RPC (defaults to `https://mainnet.base.org`). |
 | `BASE_MAINNET_RPC_FALLBACK_URLS` | No | Comma-separated RPCs tried when the primary fails (defaults to mainnet.base.org and publicnode). |
 | `OPTIMISM_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL` | No | Put first in that chain's fallback list for `/gas/compare`. |
-| `GAS_PRICE_USD`, `COMPARE_PRICE_USD`, `HISTORY_PRICE_USD`, `WINDOW_PRICE_USD` | No | Per-route prices in USD. |
+| `GAS_PRICE_USD`, `COMPARE_PRICE_USD`, `HISTORY_PRICE_USD`, `WINDOW_PRICE_USD`, `ADVICE_PRICE_USD` | No | Per-route prices in USD. |
 | `RPC_CACHE_MS` | No | How long one RPC read is shared between callers (default `2000`, `0` disables). |
 | `RATE_LIMIT_PAID_PER_MIN` | No | Paid requests per client per minute (default `60`, `0` disables). |
 | `HISTORY_SAMPLE_INTERVAL_MS` | No | Gas sampling interval (default `300000`, 10s to 1h). |

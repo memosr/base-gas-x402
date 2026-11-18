@@ -38,9 +38,14 @@ export const HISTORY_PRICE_USD = process.env.HISTORY_PRICE_USD || "0.01";
 // it turns raw history into a scheduling decision.
 export const WINDOW_PRICE_USD = process.env.WINDOW_PRICE_USD || "0.02";
 
+// Price per /gas/advice call. Barely above /gas: it is one live read plus the
+// history the service already holds, packaged as a send-now-or-wait answer.
+export const ADVICE_PRICE_USD = process.env.ADVICE_PRICE_USD || "0.003";
+
 for (const [name, value] of [
   ["HISTORY_PRICE_USD", HISTORY_PRICE_USD],
   ["WINDOW_PRICE_USD", WINDOW_PRICE_USD],
+  ["ADVICE_PRICE_USD", ADVICE_PRICE_USD],
 ]) {
   if (!/^\d+(\.\d+)?$/.test(value) || Number(value) <= 0) {
     throw new Error(`${name} must be a positive decimal number, got "${value}"`);
@@ -52,11 +57,13 @@ export const GAS_PRICE = `$${GAS_PRICE_USD}`;
 export const COMPARE_PRICE = `$${COMPARE_PRICE_USD}`;
 export const HISTORY_PRICE = `$${HISTORY_PRICE_USD}`;
 export const WINDOW_PRICE = `$${WINDOW_PRICE_USD}`;
+export const ADVICE_PRICE = `$${ADVICE_PRICE_USD}`;
 // OpenAPI x-payment-info wants decimal USD with fixed precision.
 export const GAS_PRICE_AMOUNT = Number(GAS_PRICE_USD).toFixed(6);
 export const COMPARE_PRICE_AMOUNT = Number(COMPARE_PRICE_USD).toFixed(6);
 export const HISTORY_PRICE_AMOUNT = Number(HISTORY_PRICE_USD).toFixed(6);
 export const WINDOW_PRICE_AMOUNT = Number(WINDOW_PRICE_USD).toFixed(6);
+export const ADVICE_PRICE_AMOUNT = Number(ADVICE_PRICE_USD).toFixed(6);
 
 // Bounds for the shared `hours` lookback parameter.
 export const MIN_HOURS = 1;

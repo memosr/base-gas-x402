@@ -4,10 +4,12 @@ import {
   COMPARE_PRICE_USD,
   HISTORY_PRICE_USD,
   WINDOW_PRICE_USD,
+  ADVICE_PRICE_USD,
   GAS_PRICE_AMOUNT,
   COMPARE_PRICE_AMOUNT,
   HISTORY_PRICE_AMOUNT,
   WINDOW_PRICE_AMOUNT,
+  ADVICE_PRICE_AMOUNT,
   MIN_HOURS,
   MAX_HOURS,
 } from "./pricing.js";
@@ -25,7 +27,7 @@ export const OPENAPI_DOCUMENT = {
     description:
       `Base gas oracle for agents that budget in dollars. Live Base mainnet (chain id 8453) gas: EIP-1559 base fee, low/medium/high priority tiers, and what any transaction costs in USD, ETH and gwei (ETH/USD read on-chain from Chainlink). Also: live gas cost compared across Base, OP Mainnet, Arbitrum and Ethereum in one call; 7 days of Base gas history sampled every 5 minutes with a cheap/normal/expensive/flat verdict; and the hours of day to avoid. Paid per call over x402 in USDC, from $${GAS_PRICE_USD}. No API key, no signup. Free: GET /health.`,
     "x-guidance":
-      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost in US dollars, budget agent gas spending, or monitor Base L2 network congestion. Fees are returned in gwei; estimatedTransferCost also carries usd and eth, and suggestedFees gives maxFeePerGas / maxPriorityFeePerGas in wei, ready to sign. For "which chain is cheapest right now" call GET /gas/compare once instead of four chains separately. For "is gas high or low right now, should I wait" call GET /gas/history (verdict). For "when should I schedule this" call GET /gas/cheapest-window (avoidHoursUtc). Check the free GET /health first for history coverage. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
+      `Call GET /gas to fetch live Base mainnet gas data. All parameters are optional. Each call costs ${GAS_PRICE_USD} USDC, settled on Base mainnet (eip155:8453) via x402. Use it to check gas fees before sending a transaction on Base, estimate transaction cost in US dollars, budget agent gas spending, or monitor Base L2 network congestion. Fees are returned in gwei; estimatedTransferCost also carries usd and eth, and suggestedFees gives maxFeePerGas / maxPriorityFeePerGas in wei, ready to sign. For "which chain is cheapest right now" call GET /gas/compare once instead of four chains separately. For "should I send this transaction now or wait" call GET /gas/advice (advice, with cost and fees). For "is gas high or low right now" call GET /gas/history (verdict). For "when should I schedule this" call GET /gas/cheapest-window (avoidHoursUtc). Check the free GET /health first for history coverage. Pass the optional gasLimit query parameter to price a specific operation: 21000 for a plain ETH transfer (the default), ~65000 for an ERC-20 transfer, ~85000 for an NFT mint, ~180000 for a Uniswap swap, ~1500000 for a contract deploy. estimatedTransferCost is priced at base fee plus the medium priority tier.`,
     contact: { email: "mehmet.sr35@gmail.com" },
   },
   servers: [{ url: "https://base-gas-x402-production.up.railway.app" }],
@@ -525,6 +527,100 @@ export const OPENAPI_DOCUMENT = {
             },
           },
           402: { description: "Payment Required" },
+        },
+      },
+    },
+    "/gas/advice": {
+      get: {
+        summary:
+          "Should I send my transaction on Base now or wait? Returns a send-now or wait answer with the USD cost and ready-to-sign fees",
+        description:
+          `Answers the question an agent asks right before it submits a transaction on Base: send it now, or wait? Combines a live Base mainnet gas read with the last 24 hours of continuously collected gas history. When current gas is expensive relative to that window the answer is "wait" with a suggested waitMinutes; when it is cheap, normal, or flat the answer is "send_now", because waiting is unlikely to save anything. Every answer carries a one-sentence reason, the transaction's current cost in USD for the given gasLimit, and medium-tier maxFeePerGas / maxPriorityFeePerGas in wei, ready to sign. confidence is "low" while history is still being collected, so the answer then rests on the live read alone. Common uses: gate an agent's transaction behind one cheap check, avoid sending into a gas spike, and get signable fees and a dollar cost in the same call. Each call costs ${ADVICE_PRICE_USD} USDC settled on Base mainnet (eip155:8453) via x402.`,
+        operationId: "getGasAdvice",
+        parameters: [
+          {
+            name: "gasLimit",
+            in: "query",
+            required: false,
+            description:
+              "Gas units of the transaction you plan to send. Defaults to 21000 (a plain ETH transfer).",
+            schema: {
+              type: "integer",
+              minimum: Number(MIN_GAS_LIMIT),
+              maximum: Number(MAX_GAS_LIMIT),
+              default: 21000,
+              example: 65000,
+            },
+          },
+        ],
+        "x-payment-info": {
+          price: {
+            mode: "fixed",
+            currency: "USD",
+            amount: ADVICE_PRICE_AMOUNT,
+          },
+          protocols: [{ x402: {} }],
+        },
+        responses: {
+          200: {
+            description: "Send-now or wait answer (payment accepted).",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    advice: { type: "string", enum: ["send_now", "wait"], example: "send_now" },
+                    confidence: {
+                      type: "string",
+                      enum: ["high", "low"],
+                      description: "`low` when there is not enough history yet for a verdict.",
+                      example: "high",
+                    },
+                    reason: {
+                      type: "string",
+                      example: "Base gas has not moved meaningfully in the last 24 hours, so there is nothing to wait for.",
+                    },
+                    waitMinutes: {
+                      type: ["integer", "null"],
+                      description: "Suggested wait when advice is `wait`, otherwise null.",
+                      example: null,
+                    },
+                    now: {
+                      type: "object",
+                      properties: {
+                        costUsd: { type: ["string", "null"], example: "0.0003069" },
+                        gasLimit: { type: "integer", example: 21000 },
+                        baseFeePerGas: { type: "string", description: "gwei", example: "0.005" },
+                        priorityFeePerGas: {
+                          type: "object",
+                          properties: { medium: { type: "string", description: "gwei", example: "0.00101" } },
+                        },
+                      },
+                    },
+                    verdict: {
+                      type: ["string", "null"],
+                      enum: ["cheap", "normal", "expensive", "flat", null],
+                      description: "Where the live gas price sits in the last 24 hours' range (above the max counts as expensive). Null while history is warming up.",
+                      example: "flat",
+                    },
+                    verdictNote: { type: ["string", "null"] },
+                    suggestedFees: {
+                      type: ["object", "null"],
+                      description: "Medium tier, in wei. Null when the latest block carries no base fee.",
+                      properties: {
+                        maxFeePerGas: { type: "string", example: "11010000" },
+                        maxPriorityFeePerGas: { type: "string", example: "1010000" },
+                      },
+                    },
+                    fetchedAt: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: "gasLimit is not an integer or is out of range." },
+          402: { description: "Payment Required" },
+          502: { description: "Base RPC did not respond." },
         },
       },
     },
